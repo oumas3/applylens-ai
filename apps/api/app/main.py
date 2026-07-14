@@ -18,7 +18,10 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+    "http://localhost:5173",
+    "http://127.0.0.1:5173",
+],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -34,7 +37,7 @@ def health() -> dict[str, str]:
 def product() -> ProductInfo:
     return ProductInfo(
         name="ApplyLens AI",
-        phase="Sprint 0 — Foundation",
+       phase="Sprint 0 \u2014 Foundation",
         supported_opportunities=["Master's", "PhD"],
         promise="Every decision is backed by evidence or marked unclear.",
     )
