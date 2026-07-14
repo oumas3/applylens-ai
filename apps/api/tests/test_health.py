@@ -8,8 +8,14 @@ client = TestClient(app)
 
 def test_health() -> None:
     response = client.get("/health")
+
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "service": "applylens-api"}
+
+    payload = response.json()
+    assert payload["status"] == "ok"
+    assert payload["service"] == "applylens-api"
+    assert isinstance(payload["environment"], str)
+    assert payload["environment"]
 
 
 def test_product_scope() -> None:
