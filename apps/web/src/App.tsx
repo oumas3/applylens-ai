@@ -25,10 +25,19 @@ export default function App() {
   const [uploadStatus, setUploadStatus] = useState(
     'Upload a PDF and send it to the API.'
   )
-  const [uploadedDocument, setUploadedDocument] = useState<{
-    filename: string
-    size_bytes: number
-  } | null>(null)
+  const [documents, setDocuments] = useState<
+    Array<{
+      id: string
+      original_filename: string
+      stored_filename: string
+      category: string
+      size_bytes: number
+      status: string
+      uploaded_at: string
+    }>
+  >([])
+  const [documentsLoading, setDocumentsLoading] = useState(false)
+  const [documentCategory, setDocumentCategory] = useState('OTHER')
 
   useEffect(() => {
     const controller = new AbortController()
@@ -56,6 +65,31 @@ export default function App() {
     return () => controller.abort()
   }, [])
 
+  async function loadDocuments() {
+    setDocumentsLoading(true)
+
+    try {
+      const response = await fetch(`${API_URL}/api/v1/documents`)
+
+      if (!response.ok) {
+        throw new Error('Unable to load documents.')
+      }
+
+      const payload = await response.json()
+      setDocuments(payload)
+    } catch (error) {
+      setUploadStatus(
+        error instanceof Error ? error.message : 'Unable to load documents.'
+      )
+    } finally {
+      setDocumentsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadDocuments()
+  }, [])
+
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
 
@@ -71,10 +105,13 @@ export default function App() {
       const formData = new FormData()
       formData.append('file', selectedFile)
 
-      const response = await fetch(`${API_URL}/api/v1/documents`, {
-        method: 'POST',
-        body: formData,
-      })
+      const response = await fetch(
+        `${API_URL}/api/v1/documents?category=${encodeURIComponent(documentCategory)}`,
+        {
+          method: 'POST',
+          body: formData,
+        }
+      )
 
       if (!response.ok) {
         const payload = await response.json().catch(() => null)
@@ -82,11 +119,8 @@ export default function App() {
       }
 
       const payload = await response.json()
-      setUploadedDocument({
-        filename: payload.filename,
-        size_bytes: payload.size_bytes,
-      })
-      setUploadStatus(`Uploaded ${payload.filename}`)
+      setDocuments((current) => [payload, ...current])
+      setUploadStatus(`Uploaded ${payload.original_filename}`)
       setSelectedFile(null)
     } catch (error) {
       setUploadStatus(
@@ -94,6 +128,25 @@ export default function App() {
       )
     } finally {
       setUploading(false)
+    }
+  }
+
+  async function handleDelete(documentId: string) {
+    try {
+      const response = await fetch(`${API_URL}/api/v1/documents/${documentId}`, {
+        method: 'DELETE',
+      })
+
+      if (!response.ok) {
+        throw new Error('Unable to delete document.')
+      }
+
+      setDocuments((current) => current.filter((item) => item.id !== documentId))
+      setUploadStatus('Document removed.')
+    } catch (error) {
+      setUploadStatus(
+        error instanceof Error ? error.message : 'Unable to delete document.'
+      )
     }
   }
 
@@ -139,6 +192,19 @@ export default function App() {
                 }
               />
             </label>
+            <label className="upload-field">
+              <span>Document category</span>
+              <select
+                value={documentCategory}
+                onChange={(event) => setDocumentCategory(event.target.value)}
+              >
+                <option value="CV">CV</option>
+                <option value="COVER_LETTER">Cover letter</option>
+                <option value="TRANSCRIPT">Transcript</option>
+                <option value="MOTIVATION_LETTER">Motivation letter</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </label>
             <div className="actions">
               <button type="submit" disabled={uploading || !selectedFile}>
                 {uploading ? 'Uploading...' : 'Upload document'}
@@ -152,12 +218,34 @@ export default function App() {
               </button>
             </div>
             <p className="upload-status">{uploadStatus}</p>
-            {uploadedDocument ? (
-              <p className="upload-meta">
-                Stored as {uploadedDocument.filename} •{' '}
-                {uploadedDocument.size_bytes} bytes
-              </p>
-            ) : null}
+            <div className="document-list">
+              <p className="eyebrow">UPLOADED DOCUMENTS</p>
+              {documentsLoading ? (
+                <p className="upload-meta">Loading documents...</p>
+              ) : documents.length === 0 ? (
+                <p className="upload-status">
+                  No documents uploaded yet.
+                </p>
+              ) : (
+                documents.map((document) => (
+                  <article className="document-item" key={document.id}>
+                    <div>
+                      <strong>{document.original_filename}</strong>
+                      <p>
+                        {document.category} • {document.size_bytes} bytes
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => void handleDelete(document.id)}
+                    >
+                      Delete
+                    </button>
+                  </article>
+                ))
+              )}
+            </div>
           </form>
         </div>
 
