@@ -23,7 +23,7 @@ export default function App() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
   const [uploadStatus, setUploadStatus] = useState(
-    'Upload a PDF and send it to the API.'
+    'Upload a PDF or TXT document and send it to the API.'
   )
   const [documents, setDocuments] = useState<
     Array<{
@@ -31,8 +31,10 @@ export default function App() {
       original_filename: string
       stored_filename: string
       category: string
+      content_type: string
       size_bytes: number
       status: string
+      extracted_text_length: number
       uploaded_at: string
     }>
   >([])
@@ -94,7 +96,7 @@ export default function App() {
     event.preventDefault()
 
     if (!selectedFile) {
-      setUploadStatus('Select a PDF file before uploading.')
+      setUploadStatus('Select a PDF or TXT file before uploading.')
       return
     }
 
@@ -120,7 +122,9 @@ export default function App() {
 
       const payload = await response.json()
       setDocuments((current) => [payload, ...current])
-      setUploadStatus(`Uploaded ${payload.original_filename}`)
+      setUploadStatus(
+        `Uploaded ${payload.original_filename} (${payload.extracted_text_length} chars extracted)`
+      )
       setSelectedFile(null)
     } catch (error) {
       setUploadStatus(
@@ -181,12 +185,12 @@ export default function App() {
 
           <form className="upload-card" onSubmit={handleUpload}>
             <p className="eyebrow">DOCUMENT UPLOAD</p>
-            <h3>Send your first PDF</h3>
+            <h3>Send your first PDF or TXT</h3>
             <label className="upload-field">
-              <span>Choose a PDF</span>
+              <span>Choose a PDF or TXT</span>
               <input
                 type="file"
-                accept="application/pdf"
+                accept=".pdf,.txt,application/pdf,text/plain"
                 onChange={(event) =>
                   setSelectedFile(event.target.files?.[0] ?? null)
                 }
@@ -232,7 +236,9 @@ export default function App() {
                     <div>
                       <strong>{document.original_filename}</strong>
                       <p>
-                        {document.category} • {document.size_bytes} bytes
+                        {document.category} • {document.content_type} •{' '}
+                        {document.size_bytes} bytes • {document.extracted_text_length}{' '}
+                        chars extracted
                       </p>
                     </div>
                     <button
