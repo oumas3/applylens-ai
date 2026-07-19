@@ -4,7 +4,7 @@ from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, UploadFile, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 
 router = APIRouter(
@@ -23,13 +23,33 @@ UPLOAD_DIRECTORY = (
 UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
 
 
+DocumentCategory = Literal[
+    "CV",
+    "COVER_LETTER",
+    "TRANSCRIPT",
+    "MOTIVATION_LETTER",
+    "OTHER",
+]
+
+
 class DocumentMetadata(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
     id: str
-    filename: str
+    original_filename: str = Field(..., min_length=1)
+    stored_filename: str
+    category: DocumentCategory
     content_type: str
     size_bytes: int
     status: Literal["uploaded"]
+    extracted_text_length: int = 0
     uploaded_at: datetime
+
+
+class DocumentUploadRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    category: DocumentCategory = Field(default="OTHER")
 
 
 documents: dict[str, DocumentMetadata] = {}
@@ -40,8 +60,37 @@ documents: dict[str, DocumentMetadata] = {}
     response_model=DocumentMetadata,
     status_code=status.HTTP_201_CREATED,
 )
-async def upload_document(file: UploadFile) -> DocumentMetadata:
+async def upload_document(
+    file: UploadFile,
+    category: str | None = None,
+) -> DocumentMetadata:
     filename = file.filename or "document.pdf"
+    category_value = category or "OTHER"
+
+    if not filename or filename in {".", ".."}:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid filename.",
+        )
+
+    safe_name = Path(filename).name
+    if safe_name != filename or "/" in filename or "\\" in filename:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid filename.",
+        )
+
+    if category_value not in {
+        "CV",
+        "COVER_LETTER",
+        "TRANSCRIPT",
+        "MOTIVATION_LETTER",
+        "OTHER",
+    }:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Invalid document category.",
+        )
 
     if (
         file.content_type != "application/pdf"
@@ -54,6 +103,12 @@ async def upload_document(file: UploadFile) -> DocumentMetadata:
 
     pdf_signature = await file.read(5)
 
+    if not pdf_signature:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The uploaded file is empty.",
+        )
+
     if pdf_signature != b"%PDF-":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -63,7 +118,8 @@ async def upload_document(file: UploadFile) -> DocumentMetadata:
     await file.seek(0)
 
     document_id = str(uuid4())
-    destination = UPLOAD_DIRECTORY / f"{document_id}.pdf"
+    stored_filename = f"{document_id}.pdf"
+    destination = UPLOAD_DIRECTORY / stored_filename
     size_bytes = 0
 
     try:
@@ -88,15 +144,26 @@ async def upload_document(file: UploadFile) -> DocumentMetadata:
 
     metadata = DocumentMetadata(
         id=document_id,
-        filename=filename,
+        original_filename=filename,
+        stored_filename=stored_filename,
+        category=category_value,
         content_type="application/pdf",
         size_bytes=size_bytes,
         status="uploaded",
+        extracted_text_length=0,
         uploaded_at=datetime.now(timezone.utc),
     )
 
     documents[document_id] = metadata
     return metadata
+
+
+@router.get(
+    "",
+    response_model=list[DocumentMetadata],
+)
+def list_documents() -> list[DocumentMetadata]:
+    return list(documents.values())
 
 
 @router.get(
@@ -113,3 +180,21 @@ def get_document(document_id: str) -> DocumentMetadata:
         )
 
     return document
+
+
+@router.delete(
+    "/{document_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_document(document_id: str) -> None:
+    document = documents.pop(document_id, None)
+
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found.",
+        )
+
+    stored_file = UPLOAD_DIRECTORY / document.stored_filename
+    if stored_file.exists():
+        stored_file.unlink()
