@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-
+from app.routers.documents import router as documents_router
 from app.config import get_settings
 
 
@@ -30,7 +30,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+app.include_router(documents_router)
 
 @app.get("/health")
 def health() -> dict[str, str]:
