@@ -6,6 +6,8 @@ from uuid import uuid4
 from fastapi import APIRouter, HTTPException, UploadFile, status
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.services.document_service import DocumentService
+
 
 router = APIRouter(
     prefix="/api/v1/documents",
@@ -92,48 +94,54 @@ async def upload_document(
             detail="Invalid document category.",
         )
 
-    if (
-        file.content_type != "application/pdf"
-        or not filename.lower().endswith(".pdf")
-    ):
+    supported_content_types = {"application/pdf", "text/plain"}
+    supported_extensions = {".pdf", ".txt"}
+
+    if file.content_type not in supported_content_types:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
-            detail="Only PDF documents are accepted.",
+            detail="Only PDF and TXT documents are accepted.",
         )
 
-    pdf_signature = await file.read(5)
+    if not filename.lower().endswith(tuple(supported_extensions)):
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Only PDF and TXT documents are accepted.",
+        )
 
-    if not pdf_signature:
+    file_bytes = await file.read()
+
+    if not file_bytes:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="The uploaded file is empty.",
         )
 
-    if pdf_signature != b"%PDF-":
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The uploaded file is not a valid PDF.",
-        )
+    if file.content_type == "application/pdf":
+        if file_bytes[:5] != b"%PDF-":
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="The uploaded file is not a valid PDF.",
+            )
 
     await file.seek(0)
 
     document_id = str(uuid4())
-    stored_filename = f"{document_id}.pdf"
+    file_extension = Path(filename).suffix.lower()
+    stored_filename = f"{document_id}{file_extension}"
     destination = UPLOAD_DIRECTORY / stored_filename
     size_bytes = 0
 
     try:
         with destination.open("wb") as output:
-            while chunk := await file.read(1024 * 1024):
-                size_bytes += len(chunk)
+            output.write(file_bytes)
+            size_bytes = len(file_bytes)
 
-                if size_bytes > MAX_FILE_SIZE:
-                    raise HTTPException(
-                        status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                        detail="The PDF must not exceed 10 MB.",
-                    )
-
-                output.write(chunk)
+            if size_bytes > MAX_FILE_SIZE:
+                raise HTTPException(
+                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                    detail="The file must not exceed 10 MB.",
+                )
 
     except Exception:
         destination.unlink(missing_ok=True)
@@ -142,15 +150,17 @@ async def upload_document(
     finally:
         await file.close()
 
+    extracted_text = DocumentService.extract_text(file.content_type, file_bytes)
+
     metadata = DocumentMetadata(
         id=document_id,
         original_filename=filename,
         stored_filename=stored_filename,
         category=category_value,
-        content_type="application/pdf",
+        content_type=file.content_type,
         size_bytes=size_bytes,
         status="uploaded",
-        extracted_text_length=0,
+        extracted_text_length=len(extracted_text),
         uploaded_at=datetime.now(timezone.utc),
     )
 

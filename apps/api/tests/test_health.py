@@ -44,11 +44,11 @@ def test_upload_document_accepts_valid_pdf() -> None:
 def test_upload_document_rejects_non_pdf_files() -> None:
     response = client.post(
         "/api/v1/documents",
-        files={"file": ("resume.txt", b"not-a-pdf", "text/plain")},
+        files={"file": ("resume.docx", b"not-a-pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
     )
 
     assert response.status_code == 415
-    assert response.json()["detail"] == "Only PDF documents are accepted."
+    assert response.json()["detail"] == "Only PDF and TXT documents are accepted."
 
 
 def test_upload_document_accepts_valid_category() -> None:
@@ -96,6 +96,18 @@ def test_list_documents_returns_uploaded_metadata() -> None:
 
     assert response.status_code == 200
     assert isinstance(response.json(), list)
+
+
+def test_upload_document_extracts_text_from_txt_files() -> None:
+    response = client.post(
+        "/api/v1/documents",
+        files={"file": ("notes.txt", b"hello world\n", "text/plain")},
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["content_type"] == "text/plain"
+    assert payload["extracted_text_length"] == len("hello world\n")
 
 
 def test_delete_document_removes_metadata_and_file() -> None:
