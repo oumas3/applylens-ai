@@ -38,3 +38,13 @@ def test_upload_document_accepts_valid_pdf() -> None:
     assert payload["status"] == "uploaded"
     assert payload["size_bytes"] == len(b"%PDF-1.4\n")
 
+
+def test_upload_document_rejects_non_pdf_files() -> None:
+    response = client.post(
+        "/api/v1/documents",
+        files={"file": ("resume.txt", b"not-a-pdf", "text/plain")},
+    )
+
+    assert response.status_code == 415
+    assert response.json()["detail"] == "Only PDF documents are accepted."
+
