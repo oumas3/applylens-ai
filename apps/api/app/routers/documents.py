@@ -4,6 +4,7 @@ from typing import Literal
 from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, UploadFile, status
+from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.services.document_service import DocumentService
@@ -97,7 +98,9 @@ async def upload_document(
     supported_content_types = {"application/pdf", "text/plain"}
     supported_extensions = {".pdf", ".txt"}
 
-    if file.content_type not in supported_content_types:
+    normalized_content_type = file.content_type.split(";", 1)[0].strip().lower()
+
+    if normalized_content_type not in supported_content_types:
         raise HTTPException(
             status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
             detail="Only PDF and TXT documents are accepted.",
@@ -117,7 +120,7 @@ async def upload_document(
             detail="The uploaded file is empty.",
         )
 
-    if file.content_type == "application/pdf":
+    if normalized_content_type == "application/pdf":
         if file_bytes[:5] != b"%PDF-":
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -150,14 +153,14 @@ async def upload_document(
     finally:
         await file.close()
 
-    extracted_text = DocumentService.extract_text(file.content_type, file_bytes)
+    extracted_text = DocumentService.extract_text(normalized_content_type, file_bytes)
 
     metadata = DocumentMetadata(
         id=document_id,
         original_filename=filename,
         stored_filename=stored_filename,
         category=category_value,
-        content_type=file.content_type,
+        content_type=normalized_content_type,
         size_bytes=size_bytes,
         status="uploaded",
         extracted_text_length=len(extracted_text),
@@ -190,6 +193,26 @@ def get_document(document_id: str) -> DocumentMetadata:
         )
 
     return document
+
+
+@router.get(
+    "/{document_id}/text",
+    response_class=PlainTextResponse,
+)
+def get_document_text(document_id: str) -> str:
+    document = documents.get(document_id)
+
+    if document is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Document not found.",
+        )
+
+    extracted_text = DocumentService.extract_text(
+        document.content_type,
+        (UPLOAD_DIRECTORY / document.stored_filename).read_bytes(),
+    )
+    return extracted_text
 
 
 @router.delete(
