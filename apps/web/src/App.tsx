@@ -272,17 +272,41 @@ async function handlePreviewText(
                         chars extracted
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      className="ghost"
-                      onClick={() => void handleDelete(document.id)}
-                    >
-                      Delete
-                    </button>
+                    <div className="document-actions">
+  <button type="button" className="ghost" onClick={() => void handlePreviewText(document.id, document.original_filename)}>View text</button>
+  <button type="button" className="ghost" onClick={() => void handleDelete(document.id)}>Delete</button>
+</div>
                   </article>
                 ))
               )}
             </div>
+              {previewTitle && (
+  <section className="text-preview" aria-live="polite">
+    <div className="text-preview-header">
+      <div>
+        <p className="eyebrow">EXTRACTED TEXT</p>
+        <h3>{previewTitle}</h3>
+      </div>
+
+      <button
+        type="button"
+        className="ghost"
+        onClick={() => {
+          setPreviewTitle('')
+          setPreviewText('')
+        }}
+      >
+        Close
+      </button>
+    </div>
+
+    <pre>
+      {previewLoading
+        ? 'Loading extracted text...'
+        : previewText}
+    </pre>
+  </section>
+)}
           </form>
         </div>
 
