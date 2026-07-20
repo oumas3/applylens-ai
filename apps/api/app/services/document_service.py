@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-import re
+from io import BytesIO
+
+from pypdf import PdfReader
 
 
 class DocumentService:
@@ -10,10 +12,15 @@ class DocumentService:
             return file_bytes.decode("utf-8")
 
         if content_type == "application/pdf":
-            payload = file_bytes.decode("latin-1", errors="ignore")
-            matches = re.findall(r"\((.*?)\)\s*Tj", payload, re.DOTALL)
-            if matches:
-                return "".join(matches)
-            return ""
+            reader = PdfReader(BytesIO(file_bytes))
+            pages_text: list[str] = []
+
+            for page in reader.pages:
+                page_text = page.extract_text()
+
+                if page_text:
+                    pages_text.append(page_text)
+
+            return "\n".join(pages_text)
 
         return ""
