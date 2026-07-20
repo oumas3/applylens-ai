@@ -158,34 +158,8 @@ def test_upload_document_accepts_txt_content_types_with_charset() -> None:
     assert payload["content_type"] == "text/plain"
     assert payload["extracted_text_length"] == len("hello from charset")
 
-
 def test_upload_document_extracts_text_from_simple_pdf_payloads() -> None:
-    pdf_bytes = (
-        make_test_pdf()
-        b"1 0 obj\n"
-        b"<< /Type /Catalog /Pages 2 0 R >>\n"
-        b"endobj\n"
-        b"2 0 obj\n"
-        b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>\n"
-        b"endobj\n"
-        b"3 0 obj\n"
-        b"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 300 144] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\n"
-        b"endobj\n"
-        b"4 0 obj\n"
-        b"<< /Length 44 >>\n"
-        b"stream\n"
-        b"BT\n/F1 24 Tf\n72 720 Td\n(Hello from PDF) Tj\nET\n"
-        b"endstream\n"
-        b"endobj\n"
-        b"5 0 obj\n"
-        b"<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\n"
-        b"endobj\n"
-        b"xref\n"
-        b"trailer\n"
-        b"<< /Root 1 0 R >>\n"
-        b"%%EOF"
-    )
-
+    pdf_bytes = make_test_pdf("Hello from PDF")
     response = client.post(
         "/api/v1/documents",
         files={"file": ("resume.pdf", pdf_bytes, "application/pdf")},
