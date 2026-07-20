@@ -10,3 +10,4 @@ apps/web/vite.config.js
 apps/web/vite.config.d.ts
 *.pyc
 .DS_Store
+apps/api/storage/
