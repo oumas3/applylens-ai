@@ -3,6 +3,11 @@ from __future__ import annotations
 from io import BytesIO
 
 from pypdf import PdfReader
+from pypdf.errors import PdfReadError
+
+
+class DocumentExtractionError(ValueError):
+    """Raised when text cannot be extracted safely from a document."""
 
 
 class DocumentService:
@@ -12,15 +17,21 @@ class DocumentService:
             return file_bytes.decode("utf-8")
 
         if content_type == "application/pdf":
-            reader = PdfReader(BytesIO(file_bytes))
-            pages_text: list[str] = []
+            try:
+                reader = PdfReader(BytesIO(file_bytes))
+                pages_text: list[str] = []
 
-            for page in reader.pages:
-                page_text = page.extract_text()
+                for page in reader.pages:
+                    page_text = page.extract_text()
 
-                if page_text:
-                    pages_text.append(page_text)
+                    if page_text:
+                        pages_text.append(page_text)
 
-            return "\n".join(pages_text)
+                return "\n".join(pages_text)
+
+            except PdfReadError as error:
+                raise DocumentExtractionError(
+                    "The PDF could not be read."
+                ) from error
 
         return ""

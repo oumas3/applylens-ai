@@ -10,6 +10,22 @@ from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 client = TestClient(app)
 
+def test_upload_document_rejects_corrupted_pdf() -> None:
+    response = client.post(
+        "/api/v1/documents",
+        files={
+            "file": (
+                "broken.pdf",
+                b"%PDF-1.4\nbroken\n%%EOF",
+                "application/pdf",
+            )
+        },
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "The PDF could not be read."
+
+    
 def make_test_pdf(text: str = "Hello from PDF") -> bytes:
     output = BytesIO()
     writer = PdfWriter()
