@@ -40,6 +40,9 @@ export default function App() {
   >([])
   const [documentsLoading, setDocumentsLoading] = useState(false)
   const [documentCategory, setDocumentCategory] = useState('OTHER')
+  const [previewText, setPreviewText] = useState('')
+  const [previewTitle, setPreviewTitle] = useState('')
+  const [previewLoading, setPreviewLoading] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -134,7 +137,35 @@ export default function App() {
       setUploading(false)
     }
   }
+async function handlePreviewText(
+  documentId: string,
+  filename: string
+) {
+  setPreviewLoading(true)
+  setPreviewTitle(filename)
+  setPreviewText('')
 
+  try {
+    const response = await fetch(
+      `${API_URL}/api/v1/documents/${documentId}/text`
+    )
+
+    if (!response.ok) {
+      throw new Error('Unable to load the extracted text.')
+    }
+
+    const text = await response.text()
+    setPreviewText(text || 'No readable text was found in this document.')
+  } catch (error) {
+    setPreviewText(
+      error instanceof Error
+        ? error.message
+        : 'Unable to load the extracted text.'
+    )
+  } finally {
+    setPreviewLoading(false)
+  }
+}
   async function handleDelete(documentId: string) {
     try {
       const response = await fetch(`${API_URL}/api/v1/documents/${documentId}`, {
