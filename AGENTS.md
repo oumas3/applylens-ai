@@ -1,7 +1,7 @@
 # ApplyLens AI Project Context
 
 ## Project overview
-ApplyLens AI is an AI-assisted platform for evaluating job and master’s applications. It analyzes CVs, application documents, job descriptions, and master’s requirements, then produces structured, explainable recommendations.
+ApplyLens AI is an evidence-based application intelligence platform for Master's and PhD candidates. It analyzes candidate documents and academic calls to identify eligibility, supporting evidence, missing requirements, deadlines, fees, funding, and application tasks. It does not submit applications automatically.
 
 ## Repository
 - Repository: https://github.com/oumas3/applylens-ai
@@ -17,9 +17,12 @@ ApplyLens AI is an AI-assisted platform for evaluating job and master’s applic
 - Sprint 0 is complete.
 - The React interface works and looks professional.
 - The frontend connects successfully to the FastAPI health endpoint.
-- npm dependencies are installed.
-- The current Git branch is sprint-1-documents.
-- Sprint 1 document-upload work is in progress.
+- npm dependencies are installed. 
+- The current Git branch is sprint-2-opportunity-analysis.
+- Sprint 1 document ingestion is complete.
+- Sprint 2 will focus on opportunity analysis, eligibility reasoning, and application task tracking.
+- The backend has 15 passing tests.
+- The frontend production build passes.
 
 ## Working rules
 - Guide the work carefully, one step at a time.

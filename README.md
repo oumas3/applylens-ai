@@ -2,14 +2,36 @@
 
 ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisions, comparisons, and application checklists.
 
-## Sprint 0 status
 
-- React + TypeScript web skeleton
-- FastAPI service with health and product endpoints
-- Shared environment configuration
-- Architecture decision record
-- API unit test
+## Project status
 
+### Sprint 0 — Foundation
+
+- React, TypeScript, and Vite frontend
+- FastAPI backend with validated configuration
+- Frontend-to-API connection
+- Health and product endpoints
+- Automated API tests
+
+### Sprint 1 — Document ingestion
+
+- Secure PDF and TXT uploads
+- Document categories for CVs, transcripts, and application letters
+- File-type, empty-file, filename, and corrupted-PDF validation
+- Real multi-page PDF extraction with pypdf
+- Document metadata and extracted-text endpoints
+- Document listing and deletion
+- Frontend upload, document list, and text-preview interface
+- 15 passing backend tests
+- Successful production frontend build
+
+### Sprint 2 — Opportunity analysis
+
+- Parse academic opportunity requirements and deadlines
+- Compare candidate evidence against each requirement
+- Produce eligibility status with supporting evidence and gaps
+- Surface application tasks, fees, and funding considerations
+- Add structured opportunity review flows in the UI
 ## Local setup
 
 ### Web

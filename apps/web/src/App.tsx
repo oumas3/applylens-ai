@@ -18,6 +18,32 @@ const opportunities = [
   },
 ]
 
+type AnalysisResult = {
+  title: string
+  eligibility: string
+  matched_requirements: string[]
+  missing_requirements: string[]
+  evidence_summary: string[]
+  deadline?: string | null
+  funding?: string | null
+}
+
+type TaskItem = {
+  id: number
+  title: string
+  status: string
+}
+
+type OpportunityReview = {
+  id: number
+  title: string
+  eligibility: string
+  matched_requirements?: string[]
+  missing_requirements?: string[]
+  deadline?: string | null
+  funding?: string | null
+}
+
 export default function App() {
   const [apiStatus, setApiStatus] = useState('CONNECTING TO API...')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -43,6 +69,24 @@ export default function App() {
   const [previewText, setPreviewText] = useState('')
   const [previewTitle, setPreviewTitle] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
+  const [analysisTitle, setAnalysisTitle] = useState('PhD in AI')
+  const [analysisRequirements, setAnalysisRequirements] = useState(
+    "Bachelor's degree\nResearch experience\nEnglish proficiency"
+  )
+  const [analysisEvidence, setAnalysisEvidence] = useState(
+    "Bachelor's degree completed\nPublished two papers"
+  )
+  const [analysisDeadline, setAnalysisDeadline] = useState('24 July 2026')
+  const [analysisFunding, setAnalysisFunding] = useState('Scholarship available')
+  const [analysisLoading, setAnalysisLoading] = useState(false)
+  const [analysisStatus, setAnalysisStatus] = useState(
+    'Add an opportunity title, requirements, and evidence to review it.'
+  )
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
+  const [tasks, setTasks] = useState<TaskItem[]>([])
+  const [tasksLoading, setTasksLoading] = useState(false)
+  const [reviews, setReviews] = useState<OpportunityReview[]>([])
+  const [reviewsLoading, setReviewsLoading] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -93,6 +137,52 @@ export default function App() {
 
   useEffect(() => {
     void loadDocuments()
+  }, [])
+
+  async function loadTasks() {
+    setTasksLoading(true)
+
+    try {
+      const response = await fetch(`${API_URL}/api/v1/tasks`)
+
+      if (!response.ok) {
+        throw new Error('Unable to load tasks.')
+      }
+
+      const payload = await response.json()
+      setTasks(payload)
+    } catch (error) {
+      setTasks([])
+    } finally {
+      setTasksLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadTasks()
+  }, [])
+
+  async function loadReviews() {
+    setReviewsLoading(true)
+
+    try {
+      const response = await fetch(`${API_URL}/api/v1/reviews`)
+
+      if (!response.ok) {
+        throw new Error('Unable to load reviews.')
+      }
+
+      const payload = await response.json()
+      setReviews(payload)
+    } catch (error) {
+      setReviews([])
+    } finally {
+      setReviewsLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadReviews()
   }, [])
 
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
@@ -185,6 +275,70 @@ async function handlePreviewText(
     }
   }
 
+  async function handleAnalyseOpportunity(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    setAnalysisLoading(true)
+    setAnalysisStatus('Analyzing opportunity...')
+
+    try {
+      const requirements = analysisRequirements
+        .split('\n')
+        .map((item) => item.trim())
+        .filter(Boolean)
+      const evidence = analysisEvidence
+        .split('\n')
+        .map((item) => item.trim())
+        .filter(Boolean)
+
+      const response = await fetch(`${API_URL}/api/v1/opportunities/analyse`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: analysisTitle.trim(),
+          requirements,
+          evidence,
+          deadline: analysisDeadline.trim() || null,
+          funding: analysisFunding.trim() || null,
+        }),
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.detail ?? 'Unable to analyze the opportunity.')
+      }
+
+      const payload: AnalysisResult = await response.json()
+      setAnalysisResult(payload)
+      setAnalysisStatus(`Review ready for ${payload.title}.`)
+
+      const reviewPayload: OpportunityReview = {
+        id: Date.now(),
+        title: payload.title,
+        eligibility: payload.eligibility,
+        matched_requirements: payload.matched_requirements,
+        missing_requirements: payload.missing_requirements,
+        deadline: payload.deadline ?? null,
+        funding: payload.funding ?? null,
+      }
+
+      await fetch(`${API_URL}/api/v1/reviews`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(reviewPayload),
+      })
+
+      setReviews((current) => [reviewPayload, ...current])
+    } catch (error) {
+      setAnalysisResult(null)
+      setAnalysisStatus(
+        error instanceof Error ? error.message : 'Unable to analyze the opportunity.'
+      )
+    } finally {
+      setAnalysisLoading(false)
+    }
+  }
+
   return (
     <main>
       <nav>
@@ -210,7 +364,17 @@ async function handlePreviewText(
             an application checklist.
           </p>
           <div className="actions">
-            <button>Analyse an opportunity</button>
+            <button
+              type="button"
+              onClick={() =>
+                document.getElementById('opportunity-analysis')?.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'start',
+                })
+              }
+            >
+              Analyse an opportunity
+            </button>
             <button className="ghost">Build my profile</button>
           </div>
 
@@ -310,33 +474,137 @@ async function handlePreviewText(
           </form>
         </div>
 
-        <div className="decision-card">
+        <div className="decision-card" id="opportunity-analysis">
           <p className="muted">ELIGIBILITY PREVIEW</p>
           <h2>Evidence, not guesses</h2>
 
-          {[
-            'Degree requirement',
-            'English evidence',
-            'Application fee',
-            'Deadline',
-          ].map((item, index) => (
-            <div className="decision" key={item}>
-              <span className={`dot d${index}`}></span>
-              <div>
-                <strong>{item}</strong>
-                <small>
-                  {
-                    [
-                      'Eligible — evidence found',
-                      'Unclear — certificate needed',
-                      'Action required — €20',
-                      'Confirmed — 24 July',
-                    ][index]
-                  }
-                </small>
-              </div>
+          <form className="analysis-form" onSubmit={handleAnalyseOpportunity}>
+            <label className="upload-field">
+              <span>Opportunity title</span>
+              <input
+                value={analysisTitle}
+                onChange={(event) => setAnalysisTitle(event.target.value)}
+                placeholder="PhD in AI"
+              />
+            </label>
+
+            <label className="upload-field">
+              <span>Requirements (one per line)</span>
+              <textarea
+                value={analysisRequirements}
+                onChange={(event) => setAnalysisRequirements(event.target.value)}
+                rows={5}
+                placeholder="Bachelor's degree\nResearch experience"
+              />
+            </label>
+
+            <label className="upload-field">
+              <span>Evidence (one per line)</span>
+              <textarea
+                value={analysisEvidence}
+                onChange={(event) => setAnalysisEvidence(event.target.value)}
+                rows={5}
+                placeholder="Bachelor's degree completed\nPublished two papers"
+              />
+            </label>
+
+            <label className="upload-field">
+              <span>Deadline</span>
+              <input
+                value={analysisDeadline}
+                onChange={(event) => setAnalysisDeadline(event.target.value)}
+                placeholder="24 July 2026"
+              />
+            </label>
+
+            <label className="upload-field">
+              <span>Funding note</span>
+              <input
+                value={analysisFunding}
+                onChange={(event) => setAnalysisFunding(event.target.value)}
+                placeholder="Scholarship available"
+              />
+            </label>
+
+            <div className="actions">
+              <button type="submit" disabled={analysisLoading}>
+                {analysisLoading ? 'Analyzing...' : 'Analyse opportunity'}
+              </button>
+              <button
+                type="button"
+                className="ghost"
+                onClick={() => {
+                  setAnalysisTitle('')
+                  setAnalysisRequirements('')
+                  setAnalysisEvidence('')
+                  setAnalysisDeadline('')
+                  setAnalysisFunding('')
+                  setAnalysisResult(null)
+                  setAnalysisStatus(
+                    'Add an opportunity title, requirements, and evidence to review it.'
+                  )
+                }}
+              >
+                Reset
+              </button>
             </div>
-          ))}
+          </form>
+
+          <p className="analysis-status">{analysisStatus}</p>
+
+          {analysisResult && (
+            <section className="analysis-result" aria-live="polite">
+              <div className="analysis-result-header">
+                <div>
+                  <p className="eyebrow">RESULT</p>
+                  <h3>{analysisResult.title}</h3>
+                </div>
+                <span className={`analysis-pill ${analysisResult.eligibility.toLowerCase()}`}>
+                  {analysisResult.eligibility}
+                </span>
+              </div>
+
+              <div className="analysis-grid">
+                <div>
+                  <h4>Matched requirements</h4>
+                  <ul>
+                    {analysisResult.matched_requirements.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+
+                <div>
+                  <h4>Missing requirements</h4>
+                  <ul>
+                    {analysisResult.missing_requirements.map((item) => (
+                      <li key={item}>{item}</li>
+                    ))}
+                  </ul>
+                </div>
+              </div>
+
+              <div className="analysis-evidence">
+                <h4>Evidence summary</h4>
+                <ul>
+                  {analysisResult.evidence_summary.map((item) => (
+                    <li key={item}>{item}</li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="analysis-meta">
+                <div>
+                  <h4>Deadline</h4>
+                  <p>{analysisResult.deadline || 'Not provided'}</p>
+                </div>
+                <div>
+                  <h4>Funding</h4>
+                  <p>{analysisResult.funding || 'Not provided'}</p>
+                </div>
+              </div>
+            </section>
+          )}
         </div>
       </section>
 
@@ -344,6 +612,62 @@ async function handlePreviewText(
         <div>
           <p className="eyebrow">YOUR WORKSPACE</p>
           <h2>Applications at a glance</h2>
+        </div>
+
+        <div className="task-card">
+          <div className="task-card-header">
+            <div>
+              <p className="eyebrow">APPLICATION TASKS</p>
+              <h3>Next actions for this opportunity</h3>
+            </div>
+            <span className="task-count">{tasks.length} tasks</span>
+          </div>
+
+          {tasksLoading ? (
+            <p className="upload-status">Loading tasks...</p>
+          ) : (
+            <ul className="task-list">
+              {tasks.map((task) => (
+                <li key={task.id}>
+                  <span>{task.title}</span>
+                  <strong>{task.status}</strong>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
+        <div className="task-card">
+          <div className="task-card-header">
+            <div>
+              <p className="eyebrow">SAVED REVIEWS</p>
+              <h3>Recent opportunity analyses</h3>
+            </div>
+            <span className="task-count">{reviews.length} saved</span>
+          </div>
+
+          {reviewsLoading ? (
+            <p className="upload-status">Loading reviews...</p>
+          ) : reviews.length === 0 ? (
+            <p className="upload-status">No saved reviews yet.</p>
+          ) : (
+            <ul className="task-list">
+              {reviews.map((review) => (
+                <li key={review.id} className="review-item">
+                  <div>
+                    <span>{review.title}</span>
+                    <p>
+                      {review.matched_requirements?.length ? `Matched: ${review.matched_requirements.join(', ')}` : 'No matched requirements'}
+                    </p>
+                    <p>
+                      {review.missing_requirements?.length ? `Missing: ${review.missing_requirements.join(', ')}` : 'No missing requirements'}
+                    </p>
+                  </div>
+                  <strong>{review.eligibility}</strong>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
 
         <div className="stats">
@@ -356,7 +680,7 @@ async function handlePreviewText(
             <span>Deadline tracked</span>
           </article>
           <article>
-            <strong>0</strong>
+            <strong>{analysisResult ? 1 : 0}</strong>
             <span>Calls analysed</span>
           </article>
         </div>
@@ -377,7 +701,7 @@ async function handlePreviewText(
       </section>
 
       <footer className="page-footer">
-        Built by Oumaima Ouayres • Sprint 0 • Master's and PhD MVP
+        Built by Oumaima Ouayres • Sprint 2 • Master's and PhD MVP
       </footer>
     </main>
   )

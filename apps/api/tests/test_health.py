@@ -213,3 +213,49 @@ def test_delete_document_removes_metadata_and_file() -> None:
     assert upload_response.status_code == 201
     assert delete_response.status_code == 204
     assert get_response.status_code == 404
+
+
+def test_analyse_opportunity_returns_structured_review() -> None:
+    response = client.post(
+        "/api/v1/opportunities/analyse",
+        json={
+            "title": "PhD in AI",
+            "requirements": [
+                "Bachelor's degree",
+                "Research experience",
+                "English proficiency",
+            ],
+            "evidence": [
+                "Bachelor's degree completed",
+                "Published two papers",
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["title"] == "PhD in AI"
+    assert payload["eligibility"] == "Unclear"
+    assert payload["matched_requirements"] == ["Bachelor's degree", "Research experience"]
+    assert payload["missing_requirements"] == ["English proficiency"]
+    assert payload["evidence_summary"] == [
+        "Bachelor's degree completed",
+        "Published two papers",
+    ]
+
+
+def test_list_tasks_returns_default_tasks() -> None:
+    response = client.get("/api/v1/tasks")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload[0]["title"] == "Gather supporting documents"
+    assert payload[0]["status"] == "pending"
+
+
+def test_saved_reviews_endpoint_returns_recent_reviews() -> None:
+    response = client.get("/api/v1/reviews")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload == []
