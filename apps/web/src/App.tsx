@@ -26,7 +26,9 @@ type AnalysisResult = {
   evidence_summary: string[]
   requirement_results: RequirementResult[]
   deadline?: string | null
+  deadline_date?: string | null
   funding?: string | null
+  funding_status?: 'available' | 'unavailable' | 'unclear'
 }
 
 type RequirementResult = {
@@ -91,6 +93,7 @@ export default function App() {
     "Bachelor's degree completed\nPublished two papers"
   )
   const [analysisDeadline, setAnalysisDeadline] = useState('24 July 2026')
+  const [analysisDeadlineDate, setAnalysisDeadlineDate] = useState('2026-07-24')
   const [analysisFunding, setAnalysisFunding] = useState('Scholarship available')
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisStatus, setAnalysisStatus] = useState(
@@ -369,6 +372,7 @@ async function handlePreviewText(
           evidence,
           document_ids: documents.map((document) => document.id),
           deadline: analysisDeadline.trim() || null,
+          deadline_date: analysisDeadlineDate || null,
           funding: analysisFunding.trim() || null,
         }),
       })
@@ -603,6 +607,15 @@ async function handlePreviewText(
             </label>
 
             <label className="upload-field">
+              <span>Deadline date</span>
+              <input
+                type="date"
+                value={analysisDeadlineDate}
+                onChange={(event) => setAnalysisDeadlineDate(event.target.value)}
+              />
+            </label>
+
+            <label className="upload-field">
               <span>Funding note</span>
               <input
                 value={analysisFunding}
@@ -623,6 +636,7 @@ async function handlePreviewText(
                   setAnalysisRequirements('')
                   setAnalysisEvidence('')
                   setAnalysisDeadline('')
+                  setAnalysisDeadlineDate('')
                   setAnalysisFunding('')
                   setAnalysisResult(null)
                   setAnalysisStatus(
@@ -688,11 +702,15 @@ async function handlePreviewText(
               <div className="analysis-meta">
                 <div>
                   <h4>Deadline</h4>
-                  <p>{analysisResult.deadline || 'Not provided'}</p>
+                  <p>
+                    {analysisResult.deadline || 'Not provided'}
+                    {analysisResult.deadline_date && ` (${analysisResult.deadline_date})`}
+                  </p>
                 </div>
                 <div>
                   <h4>Funding</h4>
                   <p>{analysisResult.funding || 'Not provided'}</p>
+                  <p>Status: {analysisResult.funding_status || 'unclear'}</p>
                 </div>
               </div>
             </section>
