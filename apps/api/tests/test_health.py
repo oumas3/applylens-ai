@@ -242,6 +242,29 @@ def test_analyse_opportunity_returns_structured_review() -> None:
         "Bachelor's degree completed",
         "Published two papers",
     ]
+    assert payload["requirement_results"] == [
+        {
+            "requirement": "Bachelor's degree",
+            "status": "Eligible",
+            "evidence": ["Bachelor's degree completed"],
+            "explanation": "Supporting evidence was found in the provided profile.",
+            "action": None,
+        },
+        {
+            "requirement": "Research experience",
+            "status": "Eligible",
+            "evidence": ["Published two papers"],
+            "explanation": "Supporting evidence was found in the provided profile.",
+            "action": None,
+        },
+        {
+            "requirement": "English proficiency",
+            "status": "Action required",
+            "evidence": [],
+            "explanation": "No supporting evidence was found in the provided profile.",
+            "action": "Provide evidence for: English proficiency",
+        },
+    ]
 
 
 def test_list_tasks_returns_default_tasks() -> None:
