@@ -1,4 +1,6 @@
-from fastapi import APIRouter, status
+from typing import Literal
+
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 
 router = APIRouter(
@@ -12,7 +14,11 @@ class TaskItem(BaseModel):
 
     id: int
     title: str
-    status: str
+    status: Literal["pending", "in_progress", "completed"]
+
+
+class TaskStatusUpdate(BaseModel):
+    status: Literal["pending", "in_progress", "completed"]
 
 
 class TaskGenerationRequest(BaseModel):
@@ -28,11 +34,12 @@ DEFAULT_TASKS = [
     TaskItem(id=2, title="Check application deadlines", status="pending"),
     TaskItem(id=3, title="Prepare funding statement", status="pending"),
 ]
+tasks = DEFAULT_TASKS.copy()
 
 
 @router.get("", response_model=list[TaskItem], status_code=status.HTTP_200_OK)
 def list_tasks() -> list[TaskItem]:
-    return DEFAULT_TASKS
+    return tasks
 
 
 @router.post(
@@ -41,6 +48,8 @@ def list_tasks() -> list[TaskItem]:
     status_code=status.HTTP_200_OK,
 )
 def generate_tasks(request: TaskGenerationRequest) -> list[TaskItem]:
+    global tasks
+
     task_titles = [
         f"Provide evidence for: {requirement}"
         for requirement in request.missing_requirements
@@ -53,7 +62,26 @@ def generate_tasks(request: TaskGenerationRequest) -> list[TaskItem]:
     if request.funding and request.funding.strip():
         task_titles.append("Review funding requirements and available support")
 
-    return [
+    tasks = [
         TaskItem(id=index, title=title, status="pending")
         for index, title in enumerate(task_titles, start=1)
     ]
+    return tasks
+
+
+@router.patch(
+    "/{task_id}",
+    response_model=TaskItem,
+    status_code=status.HTTP_200_OK,
+)
+def update_task_status(task_id: int, update: TaskStatusUpdate) -> TaskItem:
+    for index, task in enumerate(tasks):
+        if task.id == task_id:
+            updated_task = task.model_copy(update={"status": update.status})
+            tasks[index] = updated_task
+            return updated_task
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Task not found.",
+    )

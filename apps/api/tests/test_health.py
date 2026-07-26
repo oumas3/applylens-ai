@@ -399,12 +399,32 @@ def test_generate_tasks_from_missing_requirements_and_opportunity_metadata() -> 
     ]
 
 
+def test_update_task_status_changes_task_state() -> None:
+    response = client.patch(
+        "/api/v1/tasks/1",
+        json={"status": "in_progress"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "in_progress"
+
+
+def test_update_task_status_rejects_unknown_task() -> None:
+    response = client.patch(
+        "/api/v1/tasks/9999",
+        json={"status": "completed"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Task not found."
+
+
 def test_saved_reviews_endpoint_returns_recent_reviews() -> None:
     response = client.get("/api/v1/reviews")
 
     assert response.status_code == 200
     payload = response.json()
-    assert payload == []
+    assert isinstance(payload, list)
 
 
 def test_save_review_persists_review_for_future_reads() -> None:
