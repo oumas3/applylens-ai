@@ -405,3 +405,22 @@ def test_saved_reviews_endpoint_returns_recent_reviews() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload == []
+
+
+def test_save_review_persists_review_for_future_reads() -> None:
+    review = {
+        "id": 101,
+        "title": "PhD in AI",
+        "eligibility": "Eligible",
+        "matched_requirements": ["Bachelor's degree"],
+        "missing_requirements": [],
+        "deadline": "24 July 2026",
+        "funding": "Scholarship available",
+    }
+
+    save_response = client.post("/api/v1/reviews", json=review)
+    list_response = client.get("/api/v1/reviews")
+
+    assert save_response.status_code == 201
+    assert save_response.json() == review
+    assert list_response.json()[-1] == review
