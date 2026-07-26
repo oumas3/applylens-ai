@@ -235,7 +235,7 @@ def test_analyse_opportunity_returns_structured_review() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["title"] == "PhD in AI"
-    assert payload["eligibility"] == "Unclear"
+    assert payload["eligibility"] == "Action required"
     assert payload["matched_requirements"] == ["Bachelor's degree", "Research experience"]
     assert payload["missing_requirements"] == ["English proficiency"]
     assert payload["evidence_summary"] == [
@@ -297,6 +297,28 @@ def test_analyse_opportunity_uses_uploaded_document_evidence() -> None:
         "English proficiency",
     ]
     assert len(payload["evidence_summary"]) == 1
+
+
+def test_analyse_opportunity_marks_explicitly_failed_requirement_not_eligible() -> None:
+    response = client.post(
+        "/api/v1/opportunities/analyse",
+        json={
+            "title": "PhD in AI",
+            "requirements": ["Bachelor's degree", "English proficiency"],
+            "evidence": [
+                "No bachelor's degree has been completed",
+                "IELTS proficiency confirmed",
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["eligibility"] == "Not eligible"
+    assert payload["requirement_results"][0]["status"] == "Not eligible"
+    assert payload["requirement_results"][0]["evidence"] == [
+        "No bachelor's degree has been completed"
+    ]
 
 
 def test_analyse_opportunity_rejects_unknown_document() -> None:
