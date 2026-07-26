@@ -1,3 +1,5 @@
+import json
+from pathlib import Path
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException, status
@@ -7,6 +9,8 @@ router = APIRouter(
     prefix="/api/v1/tasks",
     tags=["tasks"],
 )
+
+TASKS_FILE = Path(__file__).resolve().parents[2] / "storage" / "tasks.json"
 
 
 class TaskItem(BaseModel):
@@ -34,7 +38,26 @@ DEFAULT_TASKS = [
     TaskItem(id=2, title="Check application deadlines", status="pending"),
     TaskItem(id=3, title="Prepare funding statement", status="pending"),
 ]
-tasks = DEFAULT_TASKS.copy()
+def _load_tasks() -> list[TaskItem]:
+    if not TASKS_FILE.exists():
+        return DEFAULT_TASKS.copy()
+
+    try:
+        payload = json.loads(TASKS_FILE.read_text(encoding="utf-8"))
+        return [TaskItem.model_validate(item) for item in payload]
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return DEFAULT_TASKS.copy()
+
+
+def _persist_tasks() -> None:
+    TASKS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    TASKS_FILE.write_text(
+        json.dumps([task.model_dump(mode="json") for task in tasks], indent=2),
+        encoding="utf-8",
+    )
+
+
+tasks = _load_tasks()
 
 
 @router.get("", response_model=list[TaskItem], status_code=status.HTTP_200_OK)
@@ -66,6 +89,7 @@ def generate_tasks(request: TaskGenerationRequest) -> list[TaskItem]:
         TaskItem(id=index, title=title, status="pending")
         for index, title in enumerate(task_titles, start=1)
     ]
+    _persist_tasks()
     return tasks
 
 
@@ -79,6 +103,7 @@ def update_task_status(task_id: int, update: TaskStatusUpdate) -> TaskItem:
         if task.id == task_id:
             updated_task = task.model_copy(update={"status": update.status})
             tasks[index] = updated_task
+            _persist_tasks()
             return updated_task
 
     raise HTTPException(
