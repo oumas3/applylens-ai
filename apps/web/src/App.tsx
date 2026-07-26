@@ -158,6 +158,29 @@ export default function App() {
     }
   }
 
+  async function handleTaskStatusChange(taskId: number, status: string) {
+    try {
+      const response = await fetch(`${API_URL}/api/v1/tasks/${taskId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Unable to update task status.')
+      }
+
+      const updatedTask: TaskItem = await response.json()
+      setTasks((current) =>
+        current.map((task) => (task.id === updatedTask.id ? updatedTask : task))
+      )
+    } catch (error) {
+      setUploadStatus(
+        error instanceof Error ? error.message : 'Unable to update task status.'
+      )
+    }
+  }
+
   useEffect(() => {
     void loadTasks()
   }, [])
@@ -646,7 +669,17 @@ async function handlePreviewText(
               {tasks.map((task) => (
                 <li key={task.id}>
                   <span>{task.title}</span>
-                  <strong>{task.status}</strong>
+                  <select
+                    value={task.status}
+                    aria-label={`Status for ${task.title}`}
+                    onChange={(event) =>
+                      void handleTaskStatusChange(task.id, event.target.value)
+                    }
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="in_progress">In progress</option>
+                    <option value="completed">Completed</option>
+                  </select>
                 </li>
               ))}
             </ul>
