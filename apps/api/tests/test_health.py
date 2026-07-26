@@ -322,6 +322,41 @@ def test_list_tasks_returns_default_tasks() -> None:
     assert payload[0]["status"] == "pending"
 
 
+def test_generate_tasks_from_missing_requirements_and_opportunity_metadata() -> None:
+    response = client.post(
+        "/api/v1/tasks/generate",
+        json={
+            "missing_requirements": ["English proficiency", "Research proposal"],
+            "deadline": "24 July 2026",
+            "funding": "Scholarship available",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": 1,
+            "title": "Provide evidence for: English proficiency",
+            "status": "pending",
+        },
+        {
+            "id": 2,
+            "title": "Provide evidence for: Research proposal",
+            "status": "pending",
+        },
+        {
+            "id": 3,
+            "title": "Confirm application deadline: 24 July 2026",
+            "status": "pending",
+        },
+        {
+            "id": 4,
+            "title": "Review funding requirements and available support",
+            "status": "pending",
+        },
+    ]
+
+
 def test_saved_reviews_endpoint_returns_recent_reviews() -> None:
     response = client.get("/api/v1/reviews")
 

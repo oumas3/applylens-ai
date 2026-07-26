@@ -313,6 +313,21 @@ async function handlePreviewText(
       setAnalysisResult(payload)
       setAnalysisStatus(`Review ready for ${payload.title}.`)
 
+      const tasksResponse = await fetch(`${API_URL}/api/v1/tasks/generate`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          missing_requirements: payload.missing_requirements,
+          deadline: payload.deadline ?? null,
+          funding: payload.funding ?? null,
+        }),
+      })
+
+      if (tasksResponse.ok) {
+        const generatedTasks: TaskItem[] = await tasksResponse.json()
+        setTasks(generatedTasks)
+      }
+
       const reviewPayload: OpportunityReview = {
         id: Date.now(),
         title: payload.title,
