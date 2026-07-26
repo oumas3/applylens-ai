@@ -341,6 +341,26 @@ def test_analyse_opportunity_normalizes_deadline_and_funding() -> None:
     assert payload["funding_status"] == "available"
 
 
+def test_analyse_opportunity_returns_structured_opportunity_metadata() -> None:
+    response = client.post(
+        "/api/v1/opportunities/analyse",
+        json={
+            "title": "PhD in AI",
+            "institution": "Example University",
+            "degree_type": "PhD",
+            "application_url": "https://example.edu/apply",
+            "required_documents": ["CV", " Transcript "],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["institution"] == "Example University"
+    assert payload["degree_type"] == "PhD"
+    assert payload["application_url"] == "https://example.edu/apply"
+    assert payload["required_documents"] == ["CV", "Transcript"]
+
+
 def test_analyse_opportunity_rejects_unknown_document() -> None:
     response = client.post(
         "/api/v1/opportunities/analyse",

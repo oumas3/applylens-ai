@@ -17,9 +17,13 @@ class OpportunityAnalysisRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     title: str = Field(..., min_length=1)
+    institution: str | None = None
+    degree_type: str | None = None
     requirements: list[str] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)
     document_ids: list[str] = Field(default_factory=list)
+    application_url: str | None = None
+    required_documents: list[str] = Field(default_factory=list)
     deadline: str | None = None
     deadline_date: date | None = None
     funding: str | None = None
@@ -35,6 +39,8 @@ class RequirementAnalysis(BaseModel):
 
 class OpportunityAnalysisResponse(BaseModel):
     title: str
+    institution: str | None = None
+    degree_type: str | None = None
     eligibility: str
     matched_requirements: list[str]
     missing_requirements: list[str]
@@ -44,6 +50,8 @@ class OpportunityAnalysisResponse(BaseModel):
     deadline_date: date | None = None
     funding: str | None = None
     funding_status: Literal["available", "unavailable", "unclear"] = "unclear"
+    application_url: str | None = None
+    required_documents: list[str] = Field(default_factory=list)
 
 
 def _matching_evidence(requirement: str, evidence_items: list[str]) -> list[str]:
@@ -221,6 +229,8 @@ def analyse_opportunity(request: OpportunityAnalysisRequest) -> OpportunityAnaly
 
     return OpportunityAnalysisResponse(
         title=request.title,
+        institution=request.institution,
+        degree_type=request.degree_type,
         eligibility=eligibility,
         matched_requirements=matched_requirements,
         missing_requirements=missing_requirements,
@@ -230,4 +240,10 @@ def analyse_opportunity(request: OpportunityAnalysisRequest) -> OpportunityAnaly
         deadline_date=request.deadline_date,
         funding=request.funding,
         funding_status=_funding_status(request.funding),
+        application_url=request.application_url,
+        required_documents=[
+            item.strip()
+            for item in request.required_documents
+            if item and item.strip()
+        ],
     )
