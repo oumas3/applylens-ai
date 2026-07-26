@@ -24,8 +24,17 @@ type AnalysisResult = {
   matched_requirements: string[]
   missing_requirements: string[]
   evidence_summary: string[]
+  requirement_results: RequirementResult[]
   deadline?: string | null
   funding?: string | null
+}
+
+type RequirementResult = {
+  requirement: string
+  status: string
+  evidence: string[]
+  explanation: string
+  action?: string | null
 }
 
 type TaskItem = {
@@ -603,24 +612,31 @@ async function handlePreviewText(
                 </span>
               </div>
 
-              <div className="analysis-grid">
-                <div>
-                  <h4>Matched requirements</h4>
-                  <ul>
-                    {analysisResult.matched_requirements.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
-
-                <div>
-                  <h4>Missing requirements</h4>
-                  <ul>
-                    {analysisResult.missing_requirements.map((item) => (
-                      <li key={item}>{item}</li>
-                    ))}
-                  </ul>
-                </div>
+              <div className="analysis-requirements">
+                <h4>Requirement review</h4>
+                {analysisResult.requirement_results.map((result) => (
+                  <article className="requirement-result" key={result.requirement}>
+                    <div className="analysis-result-header">
+                      <strong>{result.requirement}</strong>
+                      <span
+                        className={`analysis-pill ${result.status
+                          .toLowerCase()
+                          .replaceAll(' ', '-')}`}
+                      >
+                        {result.status}
+                      </span>
+                    </div>
+                    <p>{result.explanation}</p>
+                    {result.evidence.length > 0 && (
+                      <ul>
+                        {result.evidence.map((evidence) => (
+                          <li key={evidence}>{evidence}</li>
+                        ))}
+                      </ul>
+                    )}
+                    {result.action && <p><strong>Next action:</strong> {result.action}</p>}
+                  </article>
+                ))}
               </div>
 
               <div className="analysis-evidence">
