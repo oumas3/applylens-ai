@@ -20,6 +20,8 @@ const opportunities = [
 
 type AnalysisResult = {
   title: string
+  institution?: string | null
+  degree_type?: string | null
   eligibility: string
   matched_requirements: string[]
   missing_requirements: string[]
@@ -29,6 +31,8 @@ type AnalysisResult = {
   deadline_date?: string | null
   funding?: string | null
   funding_status?: 'available' | 'unavailable' | 'unclear'
+  application_url?: string | null
+  required_documents?: string[]
 }
 
 type RequirementResult = {
@@ -86,6 +90,10 @@ export default function App() {
   const [previewTitle, setPreviewTitle] = useState('')
   const [previewLoading, setPreviewLoading] = useState(false)
   const [analysisTitle, setAnalysisTitle] = useState('PhD in AI')
+  const [analysisInstitution, setAnalysisInstitution] = useState('Example University')
+  const [analysisDegreeType, setAnalysisDegreeType] = useState('PhD')
+  const [analysisApplicationUrl, setAnalysisApplicationUrl] = useState('')
+  const [analysisRequiredDocuments, setAnalysisRequiredDocuments] = useState('CV\nTranscript')
   const [analysisRequirements, setAnalysisRequirements] = useState(
     "Bachelor's degree\nResearch experience\nEnglish proficiency"
   )
@@ -368,9 +376,16 @@ async function handlePreviewText(
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: analysisTitle.trim(),
+          institution: analysisInstitution.trim() || null,
+          degree_type: analysisDegreeType.trim() || null,
           requirements,
           evidence,
           document_ids: documents.map((document) => document.id),
+          application_url: analysisApplicationUrl.trim() || null,
+          required_documents: analysisRequiredDocuments
+            .split('\n')
+            .map((item) => item.trim())
+            .filter(Boolean),
           deadline: analysisDeadline.trim() || null,
           deadline_date: analysisDeadlineDate || null,
           funding: analysisFunding.trim() || null,
@@ -607,6 +622,24 @@ async function handlePreviewText(
             </label>
 
             <label className="upload-field">
+              <span>Institution</span>
+              <input
+                value={analysisInstitution}
+                onChange={(event) => setAnalysisInstitution(event.target.value)}
+                placeholder="Example University"
+              />
+            </label>
+
+            <label className="upload-field">
+              <span>Degree type</span>
+              <input
+                value={analysisDegreeType}
+                onChange={(event) => setAnalysisDegreeType(event.target.value)}
+                placeholder="PhD"
+              />
+            </label>
+
+            <label className="upload-field">
               <span>Deadline date</span>
               <input
                 type="date"
@@ -624,6 +657,26 @@ async function handlePreviewText(
               />
             </label>
 
+            <label className="upload-field">
+              <span>Application URL</span>
+              <input
+                type="url"
+                value={analysisApplicationUrl}
+                onChange={(event) => setAnalysisApplicationUrl(event.target.value)}
+                placeholder="https://example.edu/apply"
+              />
+            </label>
+
+            <label className="upload-field">
+              <span>Required documents (one per line)</span>
+              <textarea
+                value={analysisRequiredDocuments}
+                onChange={(event) => setAnalysisRequiredDocuments(event.target.value)}
+                rows={3}
+                placeholder="CV\nTranscript"
+              />
+            </label>
+
             <div className="actions">
               <button type="submit" disabled={analysisLoading}>
                 {analysisLoading ? 'Analyzing...' : 'Analyse opportunity'}
@@ -633,6 +686,10 @@ async function handlePreviewText(
                 className="ghost"
                 onClick={() => {
                   setAnalysisTitle('')
+                  setAnalysisInstitution('')
+                  setAnalysisDegreeType('')
+                  setAnalysisApplicationUrl('')
+                  setAnalysisRequiredDocuments('')
                   setAnalysisRequirements('')
                   setAnalysisEvidence('')
                   setAnalysisDeadline('')
@@ -691,6 +748,20 @@ async function handlePreviewText(
               </div>
 
               <div className="analysis-evidence">
+                <div className="analysis-meta">
+                  <div>
+                    <h4>Institution</h4>
+                    <p>{analysisResult.institution || 'Not provided'}</p>
+                  </div>
+                  <div>
+                    <h4>Degree type</h4>
+                    <p>{analysisResult.degree_type || 'Not provided'}</p>
+                  </div>
+                  <div>
+                    <h4>Application</h4>
+                    <p>{analysisResult.application_url || 'Not provided'}</p>
+                  </div>
+                </div>
                 <h4>Evidence summary</h4>
                 <ul>
                   {analysisResult.evidence_summary.map((item) => (
@@ -698,6 +769,17 @@ async function handlePreviewText(
                   ))}
                 </ul>
               </div>
+
+              {analysisResult.required_documents?.length ? (
+                <div className="analysis-evidence">
+                  <h4>Required documents</h4>
+                  <ul>
+                    {analysisResult.required_documents.map((document) => (
+                      <li key={document}>{document}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
 
               <div className="analysis-meta">
                 <div>
@@ -791,6 +873,7 @@ async function handlePreviewText(
                   Clear comparison
                 </button>
               </div>
+
               <ul className="task-list">
               {reviews.map((review) => (
                 <li key={review.id} className="review-item">
