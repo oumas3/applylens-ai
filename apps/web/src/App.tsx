@@ -298,6 +298,7 @@ async function handlePreviewText(
           title: analysisTitle.trim(),
           requirements,
           evidence,
+          document_ids: documents.map((document) => document.id),
           deadline: analysisDeadline.trim() || null,
           funding: analysisFunding.trim() || null,
         }),

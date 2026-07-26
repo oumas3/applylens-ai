@@ -1,5 +1,8 @@
-from fastapi import APIRouter, status
+from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.routers.documents import UPLOAD_DIRECTORY, documents
+from app.services.document_service import DocumentExtractionError, DocumentService
 
 router = APIRouter(
     prefix="/api/v1/opportunities",
@@ -13,6 +16,7 @@ class OpportunityAnalysisRequest(BaseModel):
     title: str = Field(..., min_length=1)
     requirements: list[str] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)
+    document_ids: list[str] = Field(default_factory=list)
     deadline: str | None = None
     funding: str | None = None
 
@@ -67,6 +71,35 @@ def _matching_evidence(requirement: str, evidence_items: list[str]) -> list[str]
     return matches
 
 
+def _document_evidence(document_ids: list[str]) -> list[str]:
+    extracted_text: list[str] = []
+
+    for document_id in document_ids:
+        document = documents.get(document_id)
+
+        if document is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Document not found: {document_id}",
+            )
+
+        try:
+            text = DocumentService.extract_text(
+                document.content_type,
+                (UPLOAD_DIRECTORY / document.stored_filename).read_bytes(),
+            )
+        except (OSError, DocumentExtractionError) as error:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unable to read document: {document.original_filename}",
+            ) from error
+
+        if text.strip():
+            extracted_text.append(text.strip())
+
+    return extracted_text
+
+
 @router.post(
     "/analyse",
     response_model=OpportunityAnalysisResponse,
@@ -75,6 +108,7 @@ def _matching_evidence(requirement: str, evidence_items: list[str]) -> list[str]
 def analyse_opportunity(request: OpportunityAnalysisRequest) -> OpportunityAnalysisResponse:
     normalized_requirements = [item.strip() for item in request.requirements if item and item.strip()]
     normalized_evidence = [item.strip() for item in request.evidence if item and item.strip()]
+    normalized_evidence.extend(_document_evidence(request.document_ids))
 
     matched_requirements = []
     missing_requirements = []
