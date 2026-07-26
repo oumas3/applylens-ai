@@ -53,6 +53,11 @@ type OpportunityReview = {
   funding?: string | null
 }
 
+type ReviewComparison = {
+  reviews: OpportunityReview[]
+  recommended_review_id: number | null
+}
+
 export default function App() {
   const [apiStatus, setApiStatus] = useState('CONNECTING TO API...')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
@@ -96,6 +101,9 @@ export default function App() {
   const [tasksLoading, setTasksLoading] = useState(false)
   const [reviews, setReviews] = useState<OpportunityReview[]>([])
   const [reviewsLoading, setReviewsLoading] = useState(false)
+  const [selectedReviewIds, setSelectedReviewIds] = useState<number[]>([])
+  const [comparison, setComparison] = useState<ReviewComparison | null>(null)
+  const [comparisonLoading, setComparisonLoading] = useState(false)
 
   useEffect(() => {
     const controller = new AbortController()
@@ -216,6 +224,35 @@ export default function App() {
   useEffect(() => {
     void loadReviews()
   }, [])
+
+  async function compareSelectedReviews() {
+    if (selectedReviewIds.length < 2) {
+      setUploadStatus('Select at least two saved reviews to compare.')
+      return
+    }
+
+    setComparisonLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/api/v1/reviews/compare`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ review_ids: selectedReviewIds }),
+      })
+
+      if (!response.ok) {
+        throw new Error('Unable to compare saved reviews.')
+      }
+
+      setComparison(await response.json())
+    } catch (error) {
+      setUploadStatus(
+        error instanceof Error ? error.message : 'Unable to compare saved reviews.'
+      )
+      setComparison(null)
+    } finally {
+      setComparisonLoading(false)
+    }
+  }
 
   async function handleUpload(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
@@ -716,9 +753,41 @@ async function handlePreviewText(
           ) : reviews.length === 0 ? (
             <p className="upload-status">No saved reviews yet.</p>
           ) : (
-            <ul className="task-list">
+            <>
+              <div className="actions">
+                <button
+                  type="button"
+                  onClick={() => void compareSelectedReviews()}
+                  disabled={comparisonLoading || selectedReviewIds.length < 2}
+                >
+                  {comparisonLoading ? 'Comparing...' : 'Compare selected'}
+                </button>
+                <button
+                  type="button"
+                  className="ghost"
+                  onClick={() => {
+                    setSelectedReviewIds([])
+                    setComparison(null)
+                  }}
+                >
+                  Clear comparison
+                </button>
+              </div>
+              <ul className="task-list">
               {reviews.map((review) => (
                 <li key={review.id} className="review-item">
+                  <input
+                    type="checkbox"
+                    checked={selectedReviewIds.includes(review.id)}
+                    aria-label={`Select ${review.title} for comparison`}
+                    onChange={() =>
+                      setSelectedReviewIds((current) =>
+                        current.includes(review.id)
+                          ? current.filter((id) => id !== review.id)
+                          : [...current, review.id]
+                      )
+                    }
+                  />
                   <div>
                     <span>{review.title}</span>
                     <p>
@@ -731,7 +800,17 @@ async function handlePreviewText(
                   <strong>{review.eligibility}</strong>
                 </li>
               ))}
-            </ul>
+              </ul>
+              {comparison && (
+                <p className="analysis-status">
+                  Recommended: {
+                    comparison.reviews.find(
+                      (review) => review.id === comparison.recommended_review_id
+                    )?.title ?? 'No recommendation'
+                  }
+                </p>
+              )}
+            </>
           )}
         </div>
 
