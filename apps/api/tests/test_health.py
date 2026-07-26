@@ -444,3 +444,34 @@ def test_save_review_persists_review_for_future_reads() -> None:
     assert save_response.status_code == 201
     assert save_response.json() == review
     assert list_response.json()[-1] == review
+
+
+def test_compare_reviews_recommends_eligible_review_with_fewer_gaps() -> None:
+    client.post(
+        "/api/v1/reviews",
+        json={
+            "id": 201,
+            "title": "MSc Data Science",
+            "eligibility": "Action required",
+            "matched_requirements": ["Degree"],
+            "missing_requirements": ["English proficiency"],
+        },
+    )
+    client.post(
+        "/api/v1/reviews",
+        json={
+            "id": 202,
+            "title": "PhD Artificial Intelligence",
+            "eligibility": "Eligible",
+            "matched_requirements": ["Degree", "English proficiency"],
+            "missing_requirements": [],
+        },
+    )
+
+    response = client.post(
+        "/api/v1/reviews/compare",
+        json={"review_ids": [201, 202]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["recommended_review_id"] == 202
