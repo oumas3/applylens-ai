@@ -2,6 +2,9 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from app.routers.documents import router as documents_router
+from app.routers.opportunities import router as opportunities_router
+from app.routers.tasks import router as tasks_router
+from app.routers.reviews import router as reviews_router
 from app.config import get_settings
 
 
@@ -31,6 +34,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 app.include_router(documents_router)
+app.include_router(opportunities_router)
+app.include_router(tasks_router)
+app.include_router(reviews_router)
 
 @app.get("/health")
 def health() -> dict[str, str]:
@@ -45,7 +51,7 @@ def health() -> dict[str, str]:
 def product() -> ProductInfo:
     return ProductInfo(
         name="ApplyLens AI",
-        phase="Sprint 0 — Foundation",
+        phase="Sprint 2 — Opportunity analysis",
         supported_opportunities=["Master's", "PhD"],
         promise="Every decision is backed by evidence or marked unclear.",
     )

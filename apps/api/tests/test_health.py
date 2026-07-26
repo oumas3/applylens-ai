@@ -213,3 +213,290 @@ def test_delete_document_removes_metadata_and_file() -> None:
     assert upload_response.status_code == 201
     assert delete_response.status_code == 204
     assert get_response.status_code == 404
+
+
+def test_analyse_opportunity_returns_structured_review() -> None:
+    response = client.post(
+        "/api/v1/opportunities/analyse",
+        json={
+            "title": "PhD in AI",
+            "requirements": [
+                "Bachelor's degree",
+                "Research experience",
+                "English proficiency",
+            ],
+            "evidence": [
+                "Bachelor's degree completed",
+                "Published two papers",
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["title"] == "PhD in AI"
+    assert payload["eligibility"] == "Action required"
+    assert payload["matched_requirements"] == ["Bachelor's degree", "Research experience"]
+    assert payload["missing_requirements"] == ["English proficiency"]
+    assert payload["evidence_summary"] == [
+        "Bachelor's degree completed",
+        "Published two papers",
+    ]
+    assert payload["requirement_results"] == [
+        {
+            "requirement": "Bachelor's degree",
+            "status": "Eligible",
+            "evidence": ["Bachelor's degree completed"],
+            "explanation": "Supporting evidence was found in the provided profile.",
+            "action": None,
+        },
+        {
+            "requirement": "Research experience",
+            "status": "Eligible",
+            "evidence": ["Published two papers"],
+            "explanation": "Supporting evidence was found in the provided profile.",
+            "action": None,
+        },
+        {
+            "requirement": "English proficiency",
+            "status": "Action required",
+            "evidence": [],
+            "explanation": "No supporting evidence was found in the provided profile.",
+            "action": "Provide evidence for: English proficiency",
+        },
+    ]
+
+
+def test_analyse_opportunity_uses_uploaded_document_evidence() -> None:
+    upload_response = client.post(
+        "/api/v1/documents",
+        files={
+            "file": (
+                "profile.txt",
+                b"Bachelor's degree completed\nIELTS proficiency confirmed",
+                "text/plain",
+            )
+        },
+    )
+
+    document_id = upload_response.json()["id"]
+    response = client.post(
+        "/api/v1/opportunities/analyse",
+        json={
+            "title": "PhD in AI",
+            "requirements": ["Bachelor's degree", "English proficiency"],
+            "document_ids": [document_id],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["eligibility"] == "Eligible"
+    assert payload["matched_requirements"] == [
+        "Bachelor's degree",
+        "English proficiency",
+    ]
+    assert len(payload["evidence_summary"]) == 1
+
+
+def test_analyse_opportunity_marks_explicitly_failed_requirement_not_eligible() -> None:
+    response = client.post(
+        "/api/v1/opportunities/analyse",
+        json={
+            "title": "PhD in AI",
+            "requirements": ["Bachelor's degree", "English proficiency"],
+            "evidence": [
+                "No bachelor's degree has been completed",
+                "IELTS proficiency confirmed",
+            ],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["eligibility"] == "Not eligible"
+    assert payload["requirement_results"][0]["status"] == "Not eligible"
+    assert payload["requirement_results"][0]["evidence"] == [
+        "No bachelor's degree has been completed"
+    ]
+
+
+def test_analyse_opportunity_normalizes_deadline_and_funding() -> None:
+    response = client.post(
+        "/api/v1/opportunities/analyse",
+        json={
+            "title": "PhD in AI",
+            "requirements": [],
+            "deadline": "24 July 2026",
+            "deadline_date": "2026-07-24",
+            "funding": "Scholarship available",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["deadline"] == "24 July 2026"
+    assert payload["deadline_date"] == "2026-07-24"
+    assert payload["funding"] == "Scholarship available"
+    assert payload["funding_status"] == "available"
+
+
+def test_analyse_opportunity_returns_structured_opportunity_metadata() -> None:
+    response = client.post(
+        "/api/v1/opportunities/analyse",
+        json={
+            "title": "PhD in AI",
+            "institution": "Example University",
+            "degree_type": "PhD",
+            "application_url": "https://example.edu/apply",
+            "required_documents": ["CV", " Transcript "],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["institution"] == "Example University"
+    assert payload["degree_type"] == "PhD"
+    assert payload["application_url"] == "https://example.edu/apply"
+    assert payload["required_documents"] == ["CV", "Transcript"]
+
+
+def test_analyse_opportunity_rejects_unknown_document() -> None:
+    response = client.post(
+        "/api/v1/opportunities/analyse",
+        json={
+            "title": "PhD in AI",
+            "requirements": ["Research experience"],
+            "document_ids": ["missing-document"],
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Document not found: missing-document"
+
+
+def test_list_tasks_returns_default_tasks() -> None:
+    response = client.get("/api/v1/tasks")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert isinstance(payload, list)
+    assert payload
+    assert {item["status"] for item in payload} <= {
+        "pending",
+        "in_progress",
+        "completed",
+    }
+
+
+def test_generate_tasks_from_missing_requirements_and_opportunity_metadata() -> None:
+    response = client.post(
+        "/api/v1/tasks/generate",
+        json={
+            "missing_requirements": ["English proficiency", "Research proposal"],
+            "deadline": "24 July 2026",
+            "funding": "Scholarship available",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json() == [
+        {
+            "id": 1,
+            "title": "Provide evidence for: English proficiency",
+            "status": "pending",
+        },
+        {
+            "id": 2,
+            "title": "Provide evidence for: Research proposal",
+            "status": "pending",
+        },
+        {
+            "id": 3,
+            "title": "Confirm application deadline: 24 July 2026",
+            "status": "pending",
+        },
+        {
+            "id": 4,
+            "title": "Review funding requirements and available support",
+            "status": "pending",
+        },
+    ]
+
+
+def test_update_task_status_changes_task_state() -> None:
+    response = client.patch(
+        "/api/v1/tasks/1",
+        json={"status": "in_progress"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "in_progress"
+
+
+def test_update_task_status_rejects_unknown_task() -> None:
+    response = client.patch(
+        "/api/v1/tasks/9999",
+        json={"status": "completed"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Task not found."
+
+
+def test_saved_reviews_endpoint_returns_recent_reviews() -> None:
+    response = client.get("/api/v1/reviews")
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert isinstance(payload, list)
+
+
+def test_save_review_persists_review_for_future_reads() -> None:
+    review = {
+        "id": 101,
+        "title": "PhD in AI",
+        "eligibility": "Eligible",
+        "matched_requirements": ["Bachelor's degree"],
+        "missing_requirements": [],
+        "deadline": "24 July 2026",
+        "funding": "Scholarship available",
+    }
+
+    save_response = client.post("/api/v1/reviews", json=review)
+    list_response = client.get("/api/v1/reviews")
+
+    assert save_response.status_code == 201
+    assert save_response.json() == review
+    assert list_response.json()[-1] == review
+
+
+def test_compare_reviews_recommends_eligible_review_with_fewer_gaps() -> None:
+    client.post(
+        "/api/v1/reviews",
+        json={
+            "id": 201,
+            "title": "MSc Data Science",
+            "eligibility": "Action required",
+            "matched_requirements": ["Degree"],
+            "missing_requirements": ["English proficiency"],
+        },
+    )
+    client.post(
+        "/api/v1/reviews",
+        json={
+            "id": 202,
+            "title": "PhD Artificial Intelligence",
+            "eligibility": "Eligible",
+            "matched_requirements": ["Degree", "English proficiency"],
+            "missing_requirements": [],
+        },
+    )
+
+    response = client.post(
+        "/api/v1/reviews/compare",
+        json={"review_ids": [201, 202]},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["recommended_review_id"] == 202
