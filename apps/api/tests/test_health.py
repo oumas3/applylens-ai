@@ -321,6 +321,26 @@ def test_analyse_opportunity_marks_explicitly_failed_requirement_not_eligible() 
     ]
 
 
+def test_analyse_opportunity_normalizes_deadline_and_funding() -> None:
+    response = client.post(
+        "/api/v1/opportunities/analyse",
+        json={
+            "title": "PhD in AI",
+            "requirements": [],
+            "deadline": "24 July 2026",
+            "deadline_date": "2026-07-24",
+            "funding": "Scholarship available",
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["deadline"] == "24 July 2026"
+    assert payload["deadline_date"] == "2026-07-24"
+    assert payload["funding"] == "Scholarship available"
+    assert payload["funding_status"] == "available"
+
+
 def test_analyse_opportunity_rejects_unknown_document() -> None:
     response = client.post(
         "/api/v1/opportunities/analyse",

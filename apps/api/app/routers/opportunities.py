@@ -1,5 +1,8 @@
+from datetime import date
+
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 from app.routers.documents import UPLOAD_DIRECTORY, documents
 from app.services.document_service import DocumentExtractionError, DocumentService
@@ -18,6 +21,7 @@ class OpportunityAnalysisRequest(BaseModel):
     evidence: list[str] = Field(default_factory=list)
     document_ids: list[str] = Field(default_factory=list)
     deadline: str | None = None
+    deadline_date: date | None = None
     funding: str | None = None
 
 
@@ -37,7 +41,9 @@ class OpportunityAnalysisResponse(BaseModel):
     evidence_summary: list[str]
     requirement_results: list[RequirementAnalysis]
     deadline: str | None = None
+    deadline_date: date | None = None
     funding: str | None = None
+    funding_status: Literal["available", "unavailable", "unclear"] = "unclear"
 
 
 def _matching_evidence(requirement: str, evidence_items: list[str]) -> list[str]:
@@ -142,6 +148,18 @@ def _document_evidence(document_ids: list[str]) -> list[str]:
     return extracted_text
 
 
+def _funding_status(funding: str | None) -> Literal["available", "unavailable", "unclear"]:
+    if not funding or not funding.strip():
+        return "unclear"
+
+    funding_text = funding.lower()
+    if any(term in funding_text for term in ["no funding", "unfunded", "unavailable"]):
+        return "unavailable"
+    if any(term in funding_text for term in ["scholarship", "funding", "grant", "stipend", "available"]):
+        return "available"
+    return "unclear"
+
+
 @router.post(
     "/analyse",
     response_model=OpportunityAnalysisResponse,
@@ -209,5 +227,7 @@ def analyse_opportunity(request: OpportunityAnalysisRequest) -> OpportunityAnaly
         evidence_summary=normalized_evidence,
         requirement_results=requirement_results,
         deadline=request.deadline,
+        deadline_date=request.deadline_date,
         funding=request.funding,
+        funding_status=_funding_status(request.funding),
     )
