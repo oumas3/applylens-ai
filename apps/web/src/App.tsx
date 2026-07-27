@@ -43,6 +43,22 @@ type RequirementResult = {
   action?: string | null
 }
 
+type IngestedOpportunity = {
+  id: string
+  title: string
+  source_text: string
+  institution?: string | null
+  degree_type?: string | null
+  source_name?: string | null
+  source_url?: string | null
+  requirements: string[]
+  requirement_citations: Array<{
+    requirement: string
+    source_name?: string | null
+    page?: number | null
+  }>
+}
+
 type TaskItem = {
   id: number
   title: string
@@ -108,6 +124,19 @@ export default function App() {
     'Add an opportunity title, requirements, and evidence to review it.'
   )
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null)
+  const [opportunityFile, setOpportunityFile] = useState<File | null>(null)
+  const [opportunityTitle, setOpportunityTitle] = useState('')
+  const [opportunityLoading, setOpportunityLoading] = useState(false)
+  const [opportunityStatus, setOpportunityStatus] = useState(
+    'Upload an academic call to extract its requirements.'
+  )
+  const [ingestedOpportunity, setIngestedOpportunity] =
+    useState<IngestedOpportunity | null>(null)
+  const [ingestedOpportunities, setIngestedOpportunities] = useState<
+    IngestedOpportunity[]
+  >([])
+  const [ingestedOpportunitiesLoading, setIngestedOpportunitiesLoading] =
+    useState(false)
   const [tasks, setTasks] = useState<TaskItem[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
   const [reviews, setReviews] = useState<OpportunityReview[]>([])
@@ -236,6 +265,29 @@ export default function App() {
     void loadReviews()
   }, [])
 
+  async function loadIngestedOpportunities() {
+    setIngestedOpportunitiesLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/api/v1/opportunities/ingested`)
+      if (!response.ok) {
+        throw new Error('Unable to load saved opportunities.')
+      }
+      setIngestedOpportunities(await response.json())
+    } catch (error) {
+      setOpportunityStatus(
+        error instanceof Error
+          ? error.message
+          : 'Unable to load saved opportunities.'
+      )
+    } finally {
+      setIngestedOpportunitiesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadIngestedOpportunities()
+  }, [])
+
   async function compareSelectedReviews() {
     if (selectedReviewIds.length < 2) {
       setUploadStatus('Select at least two saved reviews to compare.')
@@ -305,6 +357,103 @@ export default function App() {
       )
     } finally {
       setUploading(false)
+    }
+  }
+
+  async function handleOpportunityIngest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+
+    if (!opportunityFile || !opportunityTitle.trim()) {
+      setOpportunityStatus('Add an opportunity title and select a PDF or TXT call.')
+      return
+    }
+
+    setOpportunityLoading(true)
+    setOpportunityStatus('Extracting opportunity requirements...')
+
+    try {
+      const formData = new FormData()
+      formData.append('file', opportunityFile)
+      formData.append('title', opportunityTitle.trim())
+
+      const response = await fetch(`${API_URL}/api/v1/opportunities/ingest-file`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.detail ?? 'Unable to ingest the opportunity.')
+      }
+
+      const payload: IngestedOpportunity = await response.json()
+      setIngestedOpportunity(payload)
+      setIngestedOpportunities((current) => [payload, ...current])
+      setOpportunityStatus(
+        `Extracted ${payload.requirements.length} requirement(s) from ${payload.source_name ?? 'the call'}.`
+      )
+      setOpportunityFile(null)
+    } catch (error) {
+      setOpportunityStatus(
+        error instanceof Error ? error.message : 'Unable to ingest the opportunity.'
+      )
+    } finally {
+      setOpportunityLoading(false)
+    }
+  }
+
+  function useIngestedOpportunity() {
+    if (!ingestedOpportunity) {
+      return
+    }
+
+    setAnalysisTitle(ingestedOpportunity.title)
+    setAnalysisInstitution(ingestedOpportunity.institution ?? '')
+    setAnalysisDegreeType(ingestedOpportunity.degree_type ?? '')
+    setAnalysisRequirements(ingestedOpportunity.requirements.join('\n'))
+    setAnalysisApplicationUrl(ingestedOpportunity.source_url ?? '')
+    setAnalysisStatus('Opportunity details loaded. Add evidence and analyse it.')
+    document.getElementById('opportunity-analysis-form')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
+  }
+
+  function selectSavedOpportunity(opportunity: IngestedOpportunity) {
+    setIngestedOpportunity(opportunity)
+    setOpportunityTitle(opportunity.title)
+    setAnalysisTitle(opportunity.title)
+    setAnalysisInstitution(opportunity.institution ?? '')
+    setAnalysisDegreeType(opportunity.degree_type ?? '')
+    setAnalysisRequirements(opportunity.requirements.join('\n'))
+    setAnalysisApplicationUrl(opportunity.source_url ?? '')
+    setAnalysisStatus('Saved opportunity loaded. Add evidence and analyse it.')
+  }
+
+  async function deleteSavedOpportunity(opportunityId: string) {
+    try {
+      const response = await fetch(
+        `${API_URL}/api/v1/opportunities/ingested/${opportunityId}`,
+        { method: 'DELETE' }
+      )
+
+      if (!response.ok) {
+        throw new Error('Unable to delete saved opportunity.')
+      }
+
+      setIngestedOpportunities((current) =>
+        current.filter((opportunity) => opportunity.id !== opportunityId)
+      )
+      if (ingestedOpportunity?.id === opportunityId) {
+        setIngestedOpportunity(null)
+      }
+      setOpportunityStatus('Saved opportunity deleted.')
+    } catch (error) {
+      setOpportunityStatus(
+        error instanceof Error
+          ? error.message
+          : 'Unable to delete saved opportunity.'
+      )
     }
   }
 async function handlePreviewText(
@@ -582,7 +731,121 @@ async function handlePreviewText(
           <p className="muted">ELIGIBILITY PREVIEW</p>
           <h2>Evidence, not guesses</h2>
 
-          <form className="analysis-form" onSubmit={handleAnalyseOpportunity}>
+          <form className="upload-card" onSubmit={handleOpportunityIngest}>
+            <p className="eyebrow">OPPORTUNITY INGESTION</p>
+            <h3>Extract an academic call</h3>
+            <label className="upload-field">
+              <span>Opportunity title</span>
+              <input
+                value={opportunityTitle}
+                onChange={(event) => setOpportunityTitle(event.target.value)}
+                placeholder="PhD in Artificial Intelligence"
+              />
+            </label>
+            <label className="upload-field">
+              <span>Academic call PDF or TXT</span>
+              <input
+                type="file"
+                accept=".pdf,.txt,application/pdf,text/plain"
+                onChange={(event) =>
+                  setOpportunityFile(event.target.files?.[0] ?? null)
+                }
+              />
+            </label>
+            <button type="submit" disabled={opportunityLoading || !opportunityFile}>
+              {opportunityLoading ? 'Extracting...' : 'Extract opportunity'}
+            </button>
+            <p className="upload-status">{opportunityStatus}</p>
+
+            {ingestedOpportunity && (
+              <section className="text-preview" aria-live="polite">
+                <p className="eyebrow">OPPORTUNITY DETAILS</p>
+                <h3>{ingestedOpportunity.title}</h3>
+                <div className="analysis-meta">
+                  <div>
+                    <h4>Institution</h4>
+                    <p>{ingestedOpportunity.institution || 'Not provided'}</p>
+                  </div>
+                  <div>
+                    <h4>Degree type</h4>
+                    <p>{ingestedOpportunity.degree_type || 'Not provided'}</p>
+                  </div>
+                  <div>
+                    <h4>Source</h4>
+                    <p>{ingestedOpportunity.source_name || 'Pasted text'}</p>
+                  </div>
+                </div>
+                <details>
+                  <summary>View full source text</summary>
+                  <pre>{ingestedOpportunity.source_text}</pre>
+                </details>
+                <h4>Extracted requirements and citations</h4>
+                {ingestedOpportunity.requirements.length === 0 ? (
+                  <p className="upload-status">No requirement lines were detected.</p>
+                ) : (
+                  <ul>
+                    {ingestedOpportunity.requirement_citations.map((citation) => (
+                      <li key={`${citation.requirement}-${citation.page ?? 'text'}`}>
+                        <strong>{citation.requirement}</strong>
+                        <p>
+                          Source: {citation.source_name ?? 'pasted text'}
+                          {citation.page ? `, page ${citation.page}` : ''}
+                        </p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <button type="button" onClick={useIngestedOpportunity}>
+                  Use for analysis
+                </button>
+              </section>
+            )}
+
+            <section className="document-list">
+              <p className="eyebrow">SAVED OPPORTUNITIES</p>
+              {ingestedOpportunitiesLoading ? (
+                <p className="upload-meta">Loading saved opportunities...</p>
+              ) : ingestedOpportunities.length === 0 ? (
+                <p className="upload-status">No saved opportunities yet.</p>
+              ) : (
+                ingestedOpportunities.map((opportunity) => (
+                  <article className="document-item" key={opportunity.id}>
+                    <div>
+                      <strong>{opportunity.title}</strong>
+                      <p>
+                        {opportunity.requirements.length} requirement(s)
+                        {opportunity.source_name
+                          ? ` • ${opportunity.source_name}`
+                          : ''}
+                      </p>
+                    </div>
+                    <div className="document-actions">
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => selectSavedOpportunity(opportunity)}
+                      >
+                        Select
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => void deleteSavedOpportunity(opportunity.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </section>
+          </form>
+
+          <form
+            className="analysis-form"
+            id="opportunity-analysis-form"
+            onSubmit={handleAnalyseOpportunity}
+          >
             <label className="upload-field">
               <span>Opportunity title</span>
               <input

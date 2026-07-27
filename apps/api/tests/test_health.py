@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.routers import documents as documents_router
+from app.routers import opportunities as opportunities_router
 from app.routers import reviews as reviews_router
 from app.routers import tasks as tasks_router
 
@@ -20,12 +21,18 @@ def isolate_persistent_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Keep each test independent from local runtime JSON storage."""
     monkeypatch.setattr(reviews_router, "REVIEWS_FILE", tmp_path / "reviews.json")
     monkeypatch.setattr(tasks_router, "TASKS_FILE", tmp_path / "tasks.json")
+    monkeypatch.setattr(
+        opportunities_router,
+        "OPPORTUNITIES_FILE",
+        tmp_path / "opportunities.json",
+    )
 
     reviews_router.reviews[:] = []
     tasks_router.tasks[:] = [
         task.model_copy() for task in tasks_router.DEFAULT_TASKS
     ]
     documents_router.documents.clear()
+    opportunities_router.ingested_opportunities.clear()
 
 def test_upload_document_rejects_corrupted_pdf() -> None:
     response = client.post(
@@ -282,6 +289,215 @@ def test_analyse_opportunity_returns_structured_review() -> None:
             "action": "Provide evidence for: English proficiency",
         },
     ]
+
+
+def test_ingest_opportunity_stores_source_text_and_metadata() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={
+            "title": "PhD in AI",
+            "source_text": "Applicants must hold a bachelor's degree.",
+            "institution": "Example University",
+            "degree_type": "PhD",
+            "source_name": "2026 doctoral call",
+            "source_url": "https://example.edu/call",
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["id"]
+    assert payload["title"] == "PhD in AI"
+    assert payload["source_text"] == "Applicants must hold a bachelor's degree."
+    assert payload["institution"] == "Example University"
+    assert payload["source_url"] == "https://example.edu/call"
+    assert payload["requirements"] == [
+        "Applicants must hold a bachelor's degree."
+    ]
+    assert payload["requirement_citations"] == [
+        {
+            "requirement": "Applicants must hold a bachelor's degree.",
+            "source_name": "2026 doctoral call",
+            "page": None,
+        }
+    ]
+
+    list_response = client.get("/api/v1/opportunities/ingested")
+    assert list_response.status_code == 200
+    assert list_response.json()[0]["id"] == payload["id"]
+    assert opportunities_router.OPPORTUNITIES_FILE.exists()
+
+
+def test_ingested_opportunity_persistence_file_is_isolated_per_test() -> None:
+    assert not opportunities_router.OPPORTUNITIES_FILE.exists()
+
+
+def test_ingest_opportunity_rejects_empty_source_text() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={"title": "PhD in AI", "source_text": ""},
+    )
+
+    assert response.status_code == 422
+
+
+def test_ingest_opportunity_file_extracts_txt_and_parses_requirements() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingest-file",
+        data={"title": "MSc Data Science", "degree_type": "MSc"},
+        files={
+            "file": (
+                "call.txt",
+                b"Applicants must hold a bachelor's degree.",
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["source_name"] == "call.txt"
+    assert payload["source_text"] == "Applicants must hold a bachelor's degree."
+    assert payload["requirements"] == [
+        "Applicants must hold a bachelor's degree."
+    ]
+    assert payload["requirement_citations"] == [
+        {
+            "requirement": "Applicants must hold a bachelor's degree.",
+            "source_name": "call.txt",
+            "page": None,
+        }
+    ]
+
+
+def test_ingest_opportunity_file_extracts_pdf_text() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingest-file",
+        data={"title": "PhD in AI"},
+        files={"file": ("call.pdf", make_test_pdf("Research experience required"), "application/pdf")},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["source_text"] == "Research experience required"
+    assert response.json()["requirement_citations"] == [
+        {
+            "requirement": "Research experience required",
+            "source_name": "call.pdf",
+            "page": 1,
+        }
+    ]
+
+
+def test_ingest_opportunity_file_rejects_unsupported_type() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingest-file",
+        data={"title": "PhD in AI"},
+        files={"file": ("call.docx", b"not supported", "application/octet-stream")},
+    )
+
+    assert response.status_code == 415
+
+
+def test_ingest_opportunity_extracts_requirement_lines() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={
+            "title": "MSc Data Science",
+            "source_text": (
+                "Requirements:\n"
+                "- Applicants must hold a bachelor's degree.\n"
+                "- English proficiency required.\n"
+                "Campus housing available."
+            ),
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["requirements"] == [
+        "Applicants must hold a bachelor's degree.",
+        "English proficiency required.",
+    ]
+
+
+def test_analyse_ingested_opportunity_reuses_parsed_requirements() -> None:
+    ingest_response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={
+            "title": "MSc Data Science",
+            "source_text": (
+                "Applicants must hold a bachelor's degree.\n"
+                "English proficiency required."
+            ),
+        },
+    )
+    opportunity_id = ingest_response.json()["id"]
+
+    response = client.post(
+        f"/api/v1/opportunities/ingested/{opportunity_id}/analyse",
+        json={
+            "evidence": [
+                "Bachelor's degree completed",
+                "IELTS proficiency confirmed",
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["title"] == "MSc Data Science"
+    assert payload["eligibility"] == "Eligible"
+    assert payload["matched_requirements"] == [
+        "Applicants must hold a bachelor's degree.",
+        "English proficiency required.",
+    ]
+    assert payload["source_citations"] == [
+        {
+            "requirement": "Applicants must hold a bachelor's degree.",
+            "source_name": None,
+            "page": None,
+        },
+        {
+            "requirement": "English proficiency required.",
+            "source_name": None,
+            "page": None,
+        },
+    ]
+
+
+def test_analyse_ingested_opportunity_rejects_unknown_id() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingested/missing/analyse",
+        json={"evidence": []},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Ingested opportunity not found."
+
+
+def test_delete_ingested_opportunity_removes_saved_record() -> None:
+    ingest_response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={
+            "title": "MSc Data Science",
+            "source_text": "Applicants must hold a bachelor's degree.",
+        },
+    )
+    opportunity_id = ingest_response.json()["id"]
+
+    delete_response = client.delete(
+        f"/api/v1/opportunities/ingested/{opportunity_id}"
+    )
+    list_response = client.get("/api/v1/opportunities/ingested")
+
+    assert delete_response.status_code == 204
+    assert list_response.json() == []
+
+
+def test_delete_ingested_opportunity_rejects_unknown_id() -> None:
+    response = client.delete("/api/v1/opportunities/ingested/missing")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Ingested opportunity not found."
 
 
 def test_analyse_opportunity_uses_uploaded_document_evidence() -> None:

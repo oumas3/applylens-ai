@@ -1,7 +1,13 @@
 from datetime import date
+from io import BytesIO
+import json
+from pathlib import Path
+from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Form, HTTPException, UploadFile, status
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 from typing import Literal
 
 from app.routers.documents import UPLOAD_DIRECTORY, documents
@@ -11,6 +17,109 @@ router = APIRouter(
     prefix="/api/v1/opportunities",
     tags=["opportunities"],
 )
+
+OPPORTUNITIES_FILE = Path(__file__).resolve().parents[2] / "storage" / "opportunities.json"
+
+
+class OpportunityIngestRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    title: str = Field(..., min_length=1)
+    source_text: str = Field(..., min_length=1)
+    institution: str | None = None
+    degree_type: str | None = None
+    source_name: str | None = None
+    source_url: AnyHttpUrl | None = None
+
+
+class RequirementCitation(BaseModel):
+    requirement: str
+    source_name: str | None = None
+    page: int | None = None
+
+
+class OpportunityRecord(BaseModel):
+    id: str
+    title: str
+    source_text: str
+    institution: str | None = None
+    degree_type: str | None = None
+    source_name: str | None = None
+    source_url: AnyHttpUrl | None = None
+    requirements: list[str] = Field(default_factory=list)
+    requirement_citations: list[RequirementCitation] = Field(default_factory=list)
+
+
+class OpportunityIngestAnalysisRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    evidence: list[str] = Field(default_factory=list)
+    document_ids: list[str] = Field(default_factory=list)
+
+
+def _load_opportunities() -> list[OpportunityRecord]:
+    if not OPPORTUNITIES_FILE.exists():
+        return []
+
+    try:
+        payload = json.loads(OPPORTUNITIES_FILE.read_text(encoding="utf-8"))
+        return [OpportunityRecord.model_validate(item) for item in payload]
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return []
+
+
+def _persist_opportunities() -> None:
+    OPPORTUNITIES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    OPPORTUNITIES_FILE.write_text(
+        json.dumps(
+            [opportunity.model_dump(mode="json") for opportunity in ingested_opportunities],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+ingested_opportunities: list[OpportunityRecord] = _load_opportunities()
+
+
+def _extract_requirements(source_text: str) -> list[str]:
+    requirement_markers = (
+        "must",
+        "required",
+        "applicants should",
+        "eligibility",
+        "minimum",
+        "you need",
+    )
+    requirements: list[str] = []
+
+    for raw_line in source_text.splitlines():
+        line = raw_line.strip().lstrip("-•* ")
+        normalized_line = line.lower()
+
+        if not line or normalized_line in {"requirements", "eligibility criteria"}:
+            continue
+
+        if any(marker in normalized_line for marker in requirement_markers):
+            if line not in requirements:
+                requirements.append(line)
+
+    return requirements
+
+
+def _build_requirement_citations(
+    requirements: list[str],
+    source_name: str | None,
+    page: int | None = None,
+) -> list[RequirementCitation]:
+    return [
+        RequirementCitation(
+            requirement=requirement,
+            source_name=source_name,
+            page=page,
+        )
+        for requirement in requirements
+    ]
 
 
 class OpportunityAnalysisRequest(BaseModel):
@@ -46,6 +155,7 @@ class OpportunityAnalysisResponse(BaseModel):
     missing_requirements: list[str]
     evidence_summary: list[str]
     requirement_results: list[RequirementAnalysis]
+    source_citations: list[RequirementCitation] = Field(default_factory=list)
     deadline: str | None = None
     deadline_date: date | None = None
     funding: str | None = None
@@ -169,6 +279,184 @@ def _funding_status(funding: str | None) -> Literal["available", "unavailable", 
 
 
 @router.post(
+    "/ingest",
+    response_model=OpportunityRecord,
+    status_code=status.HTTP_201_CREATED,
+)
+def ingest_opportunity(request: OpportunityIngestRequest) -> OpportunityRecord:
+    opportunity = OpportunityRecord(
+        id=str(uuid4()),
+        title=request.title,
+        source_text=request.source_text,
+        institution=request.institution,
+        degree_type=request.degree_type,
+        source_name=request.source_name,
+        source_url=request.source_url,
+        requirements=_extract_requirements(request.source_text),
+        requirement_citations=_build_requirement_citations(
+            _extract_requirements(request.source_text),
+            request.source_name,
+        ),
+    )
+    ingested_opportunities.append(opportunity)
+    _persist_opportunities()
+    return opportunity
+
+
+@router.post(
+    "/ingest-file",
+    response_model=OpportunityRecord,
+    status_code=status.HTTP_201_CREATED,
+)
+async def ingest_opportunity_file(
+    file: UploadFile,
+    title: str = Form(...),
+    institution: str | None = Form(default=None),
+    degree_type: str | None = Form(default=None),
+) -> OpportunityRecord:
+    normalized_title = title.strip()
+    if not normalized_title:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Opportunity title is required.",
+        )
+
+    filename = file.filename or "opportunity.txt"
+    extension = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    normalized_content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+
+    supported_types = {
+        "application/pdf": "pdf",
+        "text/plain": "txt",
+    }
+    if normalized_content_type not in supported_types or extension not in {"pdf", "txt"}:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Only PDF and TXT opportunity files are accepted.",
+        )
+
+    file_bytes = await file.read()
+    await file.close()
+
+    if not file_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The opportunity file is empty.",
+        )
+
+    try:
+        source_text = DocumentService.extract_text(
+            normalized_content_type,
+            file_bytes,
+        )
+    except (DocumentExtractionError, UnicodeDecodeError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The opportunity file could not be read.",
+        ) from error
+
+    opportunity = ingest_opportunity(
+        OpportunityIngestRequest(
+            title=normalized_title,
+            source_text=source_text,
+            institution=institution,
+            degree_type=degree_type,
+            source_name=filename,
+        )
+    )
+
+    if normalized_content_type == "application/pdf":
+        try:
+            page_citations: list[RequirementCitation] = []
+            reader = PdfReader(BytesIO(file_bytes))
+            for page_number, page in enumerate(reader.pages, start=1):
+                page_text = page.extract_text() or ""
+                page_requirements = _extract_requirements(page_text)
+                page_citations.extend(
+                    _build_requirement_citations(
+                        page_requirements,
+                        filename,
+                        page_number,
+                    )
+                )
+
+            if page_citations:
+                opportunity.requirement_citations = page_citations
+                _persist_opportunities()
+        except PdfReadError:
+            # DocumentService already validated the PDF; keep the general
+            # source citation when page-level extraction is unavailable.
+            pass
+
+    return opportunity
+
+
+@router.get(
+    "/ingested",
+    response_model=list[OpportunityRecord],
+    status_code=status.HTTP_200_OK,
+)
+def list_ingested_opportunities() -> list[OpportunityRecord]:
+    return ingested_opportunities
+
+
+@router.delete(
+    "/ingested/{opportunity_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_ingested_opportunity(opportunity_id: str) -> None:
+    for index, opportunity in enumerate(ingested_opportunities):
+        if opportunity.id == opportunity_id:
+            ingested_opportunities.pop(index)
+            _persist_opportunities()
+            return
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Ingested opportunity not found.",
+    )
+
+
+@router.post(
+    "/ingested/{opportunity_id}/analyse",
+    response_model=OpportunityAnalysisResponse,
+    status_code=status.HTTP_200_OK,
+)
+def analyse_ingested_opportunity(
+    opportunity_id: str,
+    request: OpportunityIngestAnalysisRequest,
+) -> OpportunityAnalysisResponse:
+    opportunity = next(
+        (
+            item
+            for item in ingested_opportunities
+            if item.id == opportunity_id
+        ),
+        None,
+    )
+
+    if opportunity is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ingested opportunity not found.",
+        )
+
+    analysis = analyse_opportunity(
+        OpportunityAnalysisRequest(
+            title=opportunity.title,
+            institution=opportunity.institution,
+            degree_type=opportunity.degree_type,
+            requirements=opportunity.requirements,
+            evidence=request.evidence,
+            document_ids=request.document_ids,
+            application_url=opportunity.source_url,
+        )
+    )
+    analysis.source_citations = opportunity.requirement_citations
+    return analysis
+
+
+@router.post(
     "/analyse",
     response_model=OpportunityAnalysisResponse,
     status_code=status.HTTP_200_OK,
@@ -236,6 +524,7 @@ def analyse_opportunity(request: OpportunityAnalysisRequest) -> OpportunityAnaly
         missing_requirements=missing_requirements,
         evidence_summary=normalized_evidence,
         requirement_results=requirement_results,
+        source_citations=[],
         deadline=request.deadline,
         deadline_date=request.deadline_date,
         funding=request.funding,
