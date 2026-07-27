@@ -47,7 +47,10 @@ type IngestedOpportunity = {
   id: string
   title: string
   source_text: string
+  institution?: string | null
+  degree_type?: string | null
   source_name?: string | null
+  source_url?: string | null
   requirements: string[]
   requirement_citations: Array<{
     requirement: string
@@ -369,6 +372,23 @@ export default function App() {
       setOpportunityLoading(false)
     }
   }
+
+  function useIngestedOpportunity() {
+    if (!ingestedOpportunity) {
+      return
+    }
+
+    setAnalysisTitle(ingestedOpportunity.title)
+    setAnalysisInstitution(ingestedOpportunity.institution ?? '')
+    setAnalysisDegreeType(ingestedOpportunity.degree_type ?? '')
+    setAnalysisRequirements(ingestedOpportunity.requirements.join('\n'))
+    setAnalysisApplicationUrl(ingestedOpportunity.source_url ?? '')
+    setAnalysisStatus('Opportunity details loaded. Add evidence and analyse it.')
+    document.getElementById('opportunity-analysis-form')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
+  }
 async function handlePreviewText(
   documentId: string,
   filename: string
@@ -688,11 +708,18 @@ async function handlePreviewText(
                     ))}
                   </ul>
                 )}
+                <button type="button" onClick={useIngestedOpportunity}>
+                  Use for analysis
+                </button>
               </section>
             )}
           </form>
 
-          <form className="analysis-form" onSubmit={handleAnalyseOpportunity}>
+          <form
+            className="analysis-form"
+            id="opportunity-analysis-form"
+            onSubmit={handleAnalyseOpportunity}
+          >
             <label className="upload-field">
               <span>Opportunity title</span>
               <input
