@@ -474,6 +474,32 @@ def test_analyse_ingested_opportunity_rejects_unknown_id() -> None:
     assert response.json()["detail"] == "Ingested opportunity not found."
 
 
+def test_delete_ingested_opportunity_removes_saved_record() -> None:
+    ingest_response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={
+            "title": "MSc Data Science",
+            "source_text": "Applicants must hold a bachelor's degree.",
+        },
+    )
+    opportunity_id = ingest_response.json()["id"]
+
+    delete_response = client.delete(
+        f"/api/v1/opportunities/ingested/{opportunity_id}"
+    )
+    list_response = client.get("/api/v1/opportunities/ingested")
+
+    assert delete_response.status_code == 204
+    assert list_response.json() == []
+
+
+def test_delete_ingested_opportunity_rejects_unknown_id() -> None:
+    response = client.delete("/api/v1/opportunities/ingested/missing")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Ingested opportunity not found."
+
+
 def test_analyse_opportunity_uses_uploaded_document_evidence() -> None:
     upload_response = client.post(
         "/api/v1/documents",

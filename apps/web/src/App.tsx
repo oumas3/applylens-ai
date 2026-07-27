@@ -429,6 +429,33 @@ export default function App() {
     setAnalysisApplicationUrl(opportunity.source_url ?? '')
     setAnalysisStatus('Saved opportunity loaded. Add evidence and analyse it.')
   }
+
+  async function deleteSavedOpportunity(opportunityId: string) {
+    try {
+      const response = await fetch(
+        `${API_URL}/api/v1/opportunities/ingested/${opportunityId}`,
+        { method: 'DELETE' }
+      )
+
+      if (!response.ok) {
+        throw new Error('Unable to delete saved opportunity.')
+      }
+
+      setIngestedOpportunities((current) =>
+        current.filter((opportunity) => opportunity.id !== opportunityId)
+      )
+      if (ingestedOpportunity?.id === opportunityId) {
+        setIngestedOpportunity(null)
+      }
+      setOpportunityStatus('Saved opportunity deleted.')
+    } catch (error) {
+      setOpportunityStatus(
+        error instanceof Error
+          ? error.message
+          : 'Unable to delete saved opportunity.'
+      )
+    }
+  }
 async function handlePreviewText(
   documentId: string,
   filename: string
@@ -772,13 +799,22 @@ async function handlePreviewText(
                           : ''}
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      className="ghost"
-                      onClick={() => selectSavedOpportunity(opportunity)}
-                    >
-                      Select
-                    </button>
+                    <div className="document-actions">
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => selectSavedOpportunity(opportunity)}
+                      >
+                        Select
+                      </button>
+                      <button
+                        type="button"
+                        className="ghost"
+                        onClick={() => void deleteSavedOpportunity(opportunity.id)}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </article>
                 ))
               )}

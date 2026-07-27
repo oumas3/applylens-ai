@@ -400,6 +400,23 @@ def list_ingested_opportunities() -> list[OpportunityRecord]:
     return ingested_opportunities
 
 
+@router.delete(
+    "/ingested/{opportunity_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+)
+def delete_ingested_opportunity(opportunity_id: str) -> None:
+    for index, opportunity in enumerate(ingested_opportunities):
+        if opportunity.id == opportunity_id:
+            ingested_opportunities.pop(index)
+            _persist_opportunities()
+            return
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Ingested opportunity not found.",
+    )
+
+
 @router.post(
     "/ingested/{opportunity_id}/analyse",
     response_model=OpportunityAnalysisResponse,
