@@ -1,4 +1,5 @@
 from datetime import date
+from uuid import uuid4
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
@@ -11,6 +12,30 @@ router = APIRouter(
     prefix="/api/v1/opportunities",
     tags=["opportunities"],
 )
+
+
+class OpportunityIngestRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    title: str = Field(..., min_length=1)
+    source_text: str = Field(..., min_length=1)
+    institution: str | None = None
+    degree_type: str | None = None
+    source_name: str | None = None
+    source_url: AnyHttpUrl | None = None
+
+
+class OpportunityRecord(BaseModel):
+    id: str
+    title: str
+    source_text: str
+    institution: str | None = None
+    degree_type: str | None = None
+    source_name: str | None = None
+    source_url: AnyHttpUrl | None = None
+
+
+ingested_opportunities: list[OpportunityRecord] = []
 
 
 class OpportunityAnalysisRequest(BaseModel):
@@ -166,6 +191,34 @@ def _funding_status(funding: str | None) -> Literal["available", "unavailable", 
     if any(term in funding_text for term in ["scholarship", "funding", "grant", "stipend", "available"]):
         return "available"
     return "unclear"
+
+
+@router.post(
+    "/ingest",
+    response_model=OpportunityRecord,
+    status_code=status.HTTP_201_CREATED,
+)
+def ingest_opportunity(request: OpportunityIngestRequest) -> OpportunityRecord:
+    opportunity = OpportunityRecord(
+        id=str(uuid4()),
+        title=request.title,
+        source_text=request.source_text,
+        institution=request.institution,
+        degree_type=request.degree_type,
+        source_name=request.source_name,
+        source_url=request.source_url,
+    )
+    ingested_opportunities.append(opportunity)
+    return opportunity
+
+
+@router.get(
+    "/ingested",
+    response_model=list[OpportunityRecord],
+    status_code=status.HTTP_200_OK,
+)
+def list_ingested_opportunities() -> list[OpportunityRecord]:
+    return ingested_opportunities
 
 
 @router.post(

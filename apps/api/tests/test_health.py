@@ -3,6 +3,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.routers import documents as documents_router
+from app.routers import opportunities as opportunities_router
 from app.routers import reviews as reviews_router
 from app.routers import tasks as tasks_router
 
@@ -26,6 +27,7 @@ def isolate_persistent_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
         task.model_copy() for task in tasks_router.DEFAULT_TASKS
     ]
     documents_router.documents.clear()
+    opportunities_router.ingested_opportunities.clear()
 
 def test_upload_document_rejects_corrupted_pdf() -> None:
     response = client.post(
@@ -282,6 +284,41 @@ def test_analyse_opportunity_returns_structured_review() -> None:
             "action": "Provide evidence for: English proficiency",
         },
     ]
+
+
+def test_ingest_opportunity_stores_source_text_and_metadata() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={
+            "title": "PhD in AI",
+            "source_text": "Applicants must hold a bachelor's degree.",
+            "institution": "Example University",
+            "degree_type": "PhD",
+            "source_name": "2026 doctoral call",
+            "source_url": "https://example.edu/call",
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["id"]
+    assert payload["title"] == "PhD in AI"
+    assert payload["source_text"] == "Applicants must hold a bachelor's degree."
+    assert payload["institution"] == "Example University"
+    assert payload["source_url"] == "https://example.edu/call"
+
+    list_response = client.get("/api/v1/opportunities/ingested")
+    assert list_response.status_code == 200
+    assert list_response.json()[0]["id"] == payload["id"]
+
+
+def test_ingest_opportunity_rejects_empty_source_text() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={"title": "PhD in AI", "source_text": ""},
+    )
+
+    assert response.status_code == 422
 
 
 def test_analyse_opportunity_uses_uploaded_document_evidence() -> None:
