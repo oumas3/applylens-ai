@@ -21,6 +21,11 @@ def isolate_persistent_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Keep each test independent from local runtime JSON storage."""
     monkeypatch.setattr(reviews_router, "REVIEWS_FILE", tmp_path / "reviews.json")
     monkeypatch.setattr(tasks_router, "TASKS_FILE", tmp_path / "tasks.json")
+    monkeypatch.setattr(
+        opportunities_router,
+        "OPPORTUNITIES_FILE",
+        tmp_path / "opportunities.json",
+    )
 
     reviews_router.reviews[:] = []
     tasks_router.tasks[:] = [
@@ -320,6 +325,11 @@ def test_ingest_opportunity_stores_source_text_and_metadata() -> None:
     list_response = client.get("/api/v1/opportunities/ingested")
     assert list_response.status_code == 200
     assert list_response.json()[0]["id"] == payload["id"]
+    assert opportunities_router.OPPORTUNITIES_FILE.exists()
+
+
+def test_ingested_opportunity_persistence_file_is_isolated_per_test() -> None:
+    assert not opportunities_router.OPPORTUNITIES_FILE.exists()
 
 
 def test_ingest_opportunity_rejects_empty_source_text() -> None:

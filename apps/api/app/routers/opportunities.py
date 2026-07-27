@@ -1,5 +1,7 @@
 from datetime import date
 from io import BytesIO
+import json
+from pathlib import Path
 from uuid import uuid4
 
 from fastapi import APIRouter, Form, HTTPException, UploadFile, status
@@ -15,6 +17,8 @@ router = APIRouter(
     prefix="/api/v1/opportunities",
     tags=["opportunities"],
 )
+
+OPPORTUNITIES_FILE = Path(__file__).resolve().parents[2] / "storage" / "opportunities.json"
 
 
 class OpportunityIngestRequest(BaseModel):
@@ -53,7 +57,29 @@ class OpportunityIngestAnalysisRequest(BaseModel):
     document_ids: list[str] = Field(default_factory=list)
 
 
-ingested_opportunities: list[OpportunityRecord] = []
+def _load_opportunities() -> list[OpportunityRecord]:
+    if not OPPORTUNITIES_FILE.exists():
+        return []
+
+    try:
+        payload = json.loads(OPPORTUNITIES_FILE.read_text(encoding="utf-8"))
+        return [OpportunityRecord.model_validate(item) for item in payload]
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return []
+
+
+def _persist_opportunities() -> None:
+    OPPORTUNITIES_FILE.parent.mkdir(parents=True, exist_ok=True)
+    OPPORTUNITIES_FILE.write_text(
+        json.dumps(
+            [opportunity.model_dump(mode="json") for opportunity in ingested_opportunities],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+
+
+ingested_opportunities: list[OpportunityRecord] = _load_opportunities()
 
 
 def _extract_requirements(source_text: str) -> list[str]:
@@ -273,6 +299,7 @@ def ingest_opportunity(request: OpportunityIngestRequest) -> OpportunityRecord:
         ),
     )
     ingested_opportunities.append(opportunity)
+    _persist_opportunities()
     return opportunity
 
 
@@ -355,6 +382,7 @@ async def ingest_opportunity_file(
 
             if page_citations:
                 opportunity.requirement_citations = page_citations
+                _persist_opportunities()
         except PdfReadError:
             # DocumentService already validated the PDF; keep the general
             # source citation when page-level extraction is unavailable.
