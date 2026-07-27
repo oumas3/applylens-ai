@@ -309,6 +309,13 @@ def test_ingest_opportunity_stores_source_text_and_metadata() -> None:
     assert payload["requirements"] == [
         "Applicants must hold a bachelor's degree."
     ]
+    assert payload["requirement_citations"] == [
+        {
+            "requirement": "Applicants must hold a bachelor's degree.",
+            "source_name": "2026 doctoral call",
+            "page": None,
+        }
+    ]
 
     list_response = client.get("/api/v1/opportunities/ingested")
     assert list_response.status_code == 200
@@ -344,6 +351,13 @@ def test_ingest_opportunity_file_extracts_txt_and_parses_requirements() -> None:
     assert payload["requirements"] == [
         "Applicants must hold a bachelor's degree."
     ]
+    assert payload["requirement_citations"] == [
+        {
+            "requirement": "Applicants must hold a bachelor's degree.",
+            "source_name": "call.txt",
+            "page": None,
+        }
+    ]
 
 
 def test_ingest_opportunity_file_extracts_pdf_text() -> None:
@@ -355,6 +369,13 @@ def test_ingest_opportunity_file_extracts_pdf_text() -> None:
 
     assert response.status_code == 201
     assert response.json()["source_text"] == "Research experience required"
+    assert response.json()["requirement_citations"] == [
+        {
+            "requirement": "Research experience required",
+            "source_name": "call.pdf",
+            "page": 1,
+        }
+    ]
 
 
 def test_ingest_opportunity_file_rejects_unsupported_type() -> None:

@@ -1,8 +1,11 @@
 from datetime import date
+from io import BytesIO
 from uuid import uuid4
 
 from fastapi import APIRouter, Form, HTTPException, UploadFile, status
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 from typing import Literal
 
 from app.routers.documents import UPLOAD_DIRECTORY, documents
@@ -25,6 +28,12 @@ class OpportunityIngestRequest(BaseModel):
     source_url: AnyHttpUrl | None = None
 
 
+class RequirementCitation(BaseModel):
+    requirement: str
+    source_name: str | None = None
+    page: int | None = None
+
+
 class OpportunityRecord(BaseModel):
     id: str
     title: str
@@ -34,6 +43,7 @@ class OpportunityRecord(BaseModel):
     source_name: str | None = None
     source_url: AnyHttpUrl | None = None
     requirements: list[str] = Field(default_factory=list)
+    requirement_citations: list[RequirementCitation] = Field(default_factory=list)
 
 
 class OpportunityIngestAnalysisRequest(BaseModel):
@@ -69,6 +79,21 @@ def _extract_requirements(source_text: str) -> list[str]:
                 requirements.append(line)
 
     return requirements
+
+
+def _build_requirement_citations(
+    requirements: list[str],
+    source_name: str | None,
+    page: int | None = None,
+) -> list[RequirementCitation]:
+    return [
+        RequirementCitation(
+            requirement=requirement,
+            source_name=source_name,
+            page=page,
+        )
+        for requirement in requirements
+    ]
 
 
 class OpportunityAnalysisRequest(BaseModel):
@@ -241,6 +266,10 @@ def ingest_opportunity(request: OpportunityIngestRequest) -> OpportunityRecord:
         source_name=request.source_name,
         source_url=request.source_url,
         requirements=_extract_requirements(request.source_text),
+        requirement_citations=_build_requirement_citations(
+            _extract_requirements(request.source_text),
+            request.source_name,
+        ),
     )
     ingested_opportunities.append(opportunity)
     return opportunity
@@ -298,7 +327,7 @@ async def ingest_opportunity_file(
             detail="The opportunity file could not be read.",
         ) from error
 
-    return ingest_opportunity(
+    opportunity = ingest_opportunity(
         OpportunityIngestRequest(
             title=normalized_title,
             source_text=source_text,
@@ -307,6 +336,30 @@ async def ingest_opportunity_file(
             source_name=filename,
         )
     )
+
+    if normalized_content_type == "application/pdf":
+        try:
+            page_citations: list[RequirementCitation] = []
+            reader = PdfReader(BytesIO(file_bytes))
+            for page_number, page in enumerate(reader.pages, start=1):
+                page_text = page.extract_text() or ""
+                page_requirements = _extract_requirements(page_text)
+                page_citations.extend(
+                    _build_requirement_citations(
+                        page_requirements,
+                        filename,
+                        page_number,
+                    )
+                )
+
+            if page_citations:
+                opportunity.requirement_citations = page_citations
+        except PdfReadError:
+            # DocumentService already validated the PDF; keep the general
+            # source citation when page-level extraction is unavailable.
+            pass
+
+    return opportunity
 
 
 @router.get(
