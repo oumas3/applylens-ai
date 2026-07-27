@@ -33,9 +33,35 @@ class OpportunityRecord(BaseModel):
     degree_type: str | None = None
     source_name: str | None = None
     source_url: AnyHttpUrl | None = None
+    requirements: list[str] = Field(default_factory=list)
 
 
 ingested_opportunities: list[OpportunityRecord] = []
+
+
+def _extract_requirements(source_text: str) -> list[str]:
+    requirement_markers = (
+        "must",
+        "required",
+        "applicants should",
+        "eligibility",
+        "minimum",
+        "you need",
+    )
+    requirements: list[str] = []
+
+    for raw_line in source_text.splitlines():
+        line = raw_line.strip().lstrip("-•* ")
+        normalized_line = line.lower()
+
+        if not line or normalized_line in {"requirements", "eligibility criteria"}:
+            continue
+
+        if any(marker in normalized_line for marker in requirement_markers):
+            if line not in requirements:
+                requirements.append(line)
+
+    return requirements
 
 
 class OpportunityAnalysisRequest(BaseModel):
@@ -207,6 +233,7 @@ def ingest_opportunity(request: OpportunityIngestRequest) -> OpportunityRecord:
         degree_type=request.degree_type,
         source_name=request.source_name,
         source_url=request.source_url,
+        requirements=_extract_requirements(request.source_text),
     )
     ingested_opportunities.append(opportunity)
     return opportunity

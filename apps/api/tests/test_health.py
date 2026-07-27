@@ -306,6 +306,9 @@ def test_ingest_opportunity_stores_source_text_and_metadata() -> None:
     assert payload["source_text"] == "Applicants must hold a bachelor's degree."
     assert payload["institution"] == "Example University"
     assert payload["source_url"] == "https://example.edu/call"
+    assert payload["requirements"] == [
+        "Applicants must hold a bachelor's degree."
+    ]
 
     list_response = client.get("/api/v1/opportunities/ingested")
     assert list_response.status_code == 200
@@ -319,6 +322,27 @@ def test_ingest_opportunity_rejects_empty_source_text() -> None:
     )
 
     assert response.status_code == 422
+
+
+def test_ingest_opportunity_extracts_requirement_lines() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={
+            "title": "MSc Data Science",
+            "source_text": (
+                "Requirements:\n"
+                "- Applicants must hold a bachelor's degree.\n"
+                "- English proficiency required.\n"
+                "Campus housing available."
+            ),
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["requirements"] == [
+        "Applicants must hold a bachelor's degree.",
+        "English proficiency required.",
+    ]
 
 
 def test_analyse_opportunity_uses_uploaded_document_evidence() -> None:
