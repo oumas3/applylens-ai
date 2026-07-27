@@ -378,6 +378,40 @@ def test_analyse_opportunity_returns_structured_opportunity_metadata() -> None:
     assert payload["required_documents"] == ["CV", "Transcript"]
 
 
+def test_analyse_opportunity_rejects_invalid_application_url() -> None:
+    response = client.post(
+        "/api/v1/opportunities/analyse",
+        json={
+            "title": "PhD in AI",
+            "application_url": "not-a-url",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_save_review_rejects_unknown_eligibility_status() -> None:
+    response = client.post(
+        "/api/v1/reviews",
+        json={
+            "id": 301,
+            "title": "MSc Data Science",
+            "eligibility": "Maybe",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_compare_reviews_requires_two_review_ids() -> None:
+    response = client.post(
+        "/api/v1/reviews/compare",
+        json={"review_ids": [301]},
+    )
+
+    assert response.status_code == 422
+
+
 def test_analyse_opportunity_rejects_unknown_document() -> None:
     response = client.post(
         "/api/v1/opportunities/analyse",

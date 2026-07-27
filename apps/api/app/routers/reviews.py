@@ -3,6 +3,7 @@ from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
 
 REVIEWS_FILE = Path(__file__).resolve().parents[2] / "storage" / "reviews.json"
 
@@ -17,7 +18,7 @@ class OpportunityReview(BaseModel):
 
     id: int
     title: str
-    eligibility: str
+    eligibility: Literal["Eligible", "Not eligible", "Unclear", "Action required"]
     matched_requirements: list[str] = Field(default_factory=list)
     missing_requirements: list[str] = Field(default_factory=list)
     deadline: str | None = None
@@ -25,7 +26,7 @@ class OpportunityReview(BaseModel):
 
 
 class ReviewComparisonRequest(BaseModel):
-    review_ids: list[int] = Field(default_factory=list)
+    review_ids: list[int] = Field(default_factory=list, min_length=2)
 
 
 class ReviewComparisonResponse(BaseModel):
