@@ -1,6 +1,10 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.routers import documents as documents_router
+from app.routers import reviews as reviews_router
+from app.routers import tasks as tasks_router
 
 from io import BytesIO
 
@@ -9,6 +13,19 @@ from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def isolate_persistent_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Keep each test independent from local runtime JSON storage."""
+    monkeypatch.setattr(reviews_router, "REVIEWS_FILE", tmp_path / "reviews.json")
+    monkeypatch.setattr(tasks_router, "TASKS_FILE", tmp_path / "tasks.json")
+
+    reviews_router.reviews[:] = []
+    tasks_router.tasks[:] = [
+        task.model_copy() for task in tasks_router.DEFAULT_TASKS
+    ]
+    documents_router.documents.clear()
 
 def test_upload_document_rejects_corrupted_pdf() -> None:
     response = client.post(
