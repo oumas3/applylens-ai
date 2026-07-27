@@ -132,6 +132,11 @@ export default function App() {
   )
   const [ingestedOpportunity, setIngestedOpportunity] =
     useState<IngestedOpportunity | null>(null)
+  const [ingestedOpportunities, setIngestedOpportunities] = useState<
+    IngestedOpportunity[]
+  >([])
+  const [ingestedOpportunitiesLoading, setIngestedOpportunitiesLoading] =
+    useState(false)
   const [tasks, setTasks] = useState<TaskItem[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
   const [reviews, setReviews] = useState<OpportunityReview[]>([])
@@ -260,6 +265,29 @@ export default function App() {
     void loadReviews()
   }, [])
 
+  async function loadIngestedOpportunities() {
+    setIngestedOpportunitiesLoading(true)
+    try {
+      const response = await fetch(`${API_URL}/api/v1/opportunities/ingested`)
+      if (!response.ok) {
+        throw new Error('Unable to load saved opportunities.')
+      }
+      setIngestedOpportunities(await response.json())
+    } catch (error) {
+      setOpportunityStatus(
+        error instanceof Error
+          ? error.message
+          : 'Unable to load saved opportunities.'
+      )
+    } finally {
+      setIngestedOpportunitiesLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    void loadIngestedOpportunities()
+  }, [])
+
   async function compareSelectedReviews() {
     if (selectedReviewIds.length < 2) {
       setUploadStatus('Select at least two saved reviews to compare.')
@@ -360,6 +388,7 @@ export default function App() {
 
       const payload: IngestedOpportunity = await response.json()
       setIngestedOpportunity(payload)
+      setIngestedOpportunities((current) => [payload, ...current])
       setOpportunityStatus(
         `Extracted ${payload.requirements.length} requirement(s) from ${payload.source_name ?? 'the call'}.`
       )
@@ -388,6 +417,17 @@ export default function App() {
       behavior: 'smooth',
       block: 'start',
     })
+  }
+
+  function selectSavedOpportunity(opportunity: IngestedOpportunity) {
+    setIngestedOpportunity(opportunity)
+    setOpportunityTitle(opportunity.title)
+    setAnalysisTitle(opportunity.title)
+    setAnalysisInstitution(opportunity.institution ?? '')
+    setAnalysisDegreeType(opportunity.degree_type ?? '')
+    setAnalysisRequirements(opportunity.requirements.join('\n'))
+    setAnalysisApplicationUrl(opportunity.source_url ?? '')
+    setAnalysisStatus('Saved opportunity loaded. Add evidence and analyse it.')
   }
 async function handlePreviewText(
   documentId: string,
@@ -713,6 +753,36 @@ async function handlePreviewText(
                 </button>
               </section>
             )}
+
+            <section className="document-list">
+              <p className="eyebrow">SAVED OPPORTUNITIES</p>
+              {ingestedOpportunitiesLoading ? (
+                <p className="upload-meta">Loading saved opportunities...</p>
+              ) : ingestedOpportunities.length === 0 ? (
+                <p className="upload-status">No saved opportunities yet.</p>
+              ) : (
+                ingestedOpportunities.map((opportunity) => (
+                  <article className="document-item" key={opportunity.id}>
+                    <div>
+                      <strong>{opportunity.title}</strong>
+                      <p>
+                        {opportunity.requirements.length} requirement(s)
+                        {opportunity.source_name
+                          ? ` • ${opportunity.source_name}`
+                          : ''}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      className="ghost"
+                      onClick={() => selectSavedOpportunity(opportunity)}
+                    >
+                      Select
+                    </button>
+                  </article>
+                ))
+              )}
+            </section>
           </form>
 
           <form
