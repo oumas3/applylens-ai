@@ -759,7 +759,27 @@ async function handlePreviewText(
 
             {ingestedOpportunity && (
               <section className="text-preview" aria-live="polite">
-                <p className="eyebrow">EXTRACTED REQUIREMENTS</p>
+                <p className="eyebrow">OPPORTUNITY DETAILS</p>
+                <h3>{ingestedOpportunity.title}</h3>
+                <div className="analysis-meta">
+                  <div>
+                    <h4>Institution</h4>
+                    <p>{ingestedOpportunity.institution || 'Not provided'}</p>
+                  </div>
+                  <div>
+                    <h4>Degree type</h4>
+                    <p>{ingestedOpportunity.degree_type || 'Not provided'}</p>
+                  </div>
+                  <div>
+                    <h4>Source</h4>
+                    <p>{ingestedOpportunity.source_name || 'Pasted text'}</p>
+                  </div>
+                </div>
+                <details>
+                  <summary>View full source text</summary>
+                  <pre>{ingestedOpportunity.source_text}</pre>
+                </details>
+                <h4>Extracted requirements and citations</h4>
                 {ingestedOpportunity.requirements.length === 0 ? (
                   <p className="upload-status">No requirement lines were detected.</p>
                 ) : (
