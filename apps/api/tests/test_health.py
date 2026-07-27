@@ -440,6 +440,18 @@ def test_analyse_ingested_opportunity_reuses_parsed_requirements() -> None:
         "Applicants must hold a bachelor's degree.",
         "English proficiency required.",
     ]
+    assert payload["source_citations"] == [
+        {
+            "requirement": "Applicants must hold a bachelor's degree.",
+            "source_name": None,
+            "page": None,
+        },
+        {
+            "requirement": "English proficiency required.",
+            "source_name": None,
+            "page": None,
+        },
+    ]
 
 
 def test_analyse_ingested_opportunity_rejects_unknown_id() -> None:

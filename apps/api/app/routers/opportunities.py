@@ -129,6 +129,7 @@ class OpportunityAnalysisResponse(BaseModel):
     missing_requirements: list[str]
     evidence_summary: list[str]
     requirement_results: list[RequirementAnalysis]
+    source_citations: list[RequirementCitation] = Field(default_factory=list)
     deadline: str | None = None
     deadline_date: date | None = None
     funding: str | None = None
@@ -395,7 +396,7 @@ def analyse_ingested_opportunity(
             detail="Ingested opportunity not found.",
         )
 
-    return analyse_opportunity(
+    analysis = analyse_opportunity(
         OpportunityAnalysisRequest(
             title=opportunity.title,
             institution=opportunity.institution,
@@ -406,6 +407,8 @@ def analyse_ingested_opportunity(
             application_url=opportunity.source_url,
         )
     )
+    analysis.source_citations = opportunity.requirement_citations
+    return analysis
 
 
 @router.post(
@@ -476,6 +479,7 @@ def analyse_opportunity(request: OpportunityAnalysisRequest) -> OpportunityAnaly
         missing_requirements=missing_requirements,
         evidence_summary=normalized_evidence,
         requirement_results=requirement_results,
+        source_citations=[],
         deadline=request.deadline,
         deadline_date=request.deadline_date,
         funding=request.funding,
