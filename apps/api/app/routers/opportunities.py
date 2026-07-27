@@ -1,7 +1,7 @@
 from datetime import date
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Form, HTTPException, UploadFile, status
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 from typing import Literal
 
@@ -244,6 +244,69 @@ def ingest_opportunity(request: OpportunityIngestRequest) -> OpportunityRecord:
     )
     ingested_opportunities.append(opportunity)
     return opportunity
+
+
+@router.post(
+    "/ingest-file",
+    response_model=OpportunityRecord,
+    status_code=status.HTTP_201_CREATED,
+)
+async def ingest_opportunity_file(
+    file: UploadFile,
+    title: str = Form(...),
+    institution: str | None = Form(default=None),
+    degree_type: str | None = Form(default=None),
+) -> OpportunityRecord:
+    normalized_title = title.strip()
+    if not normalized_title:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Opportunity title is required.",
+        )
+
+    filename = file.filename or "opportunity.txt"
+    extension = filename.lower().rsplit(".", 1)[-1] if "." in filename else ""
+    normalized_content_type = (file.content_type or "").split(";", 1)[0].strip().lower()
+
+    supported_types = {
+        "application/pdf": "pdf",
+        "text/plain": "txt",
+    }
+    if normalized_content_type not in supported_types or extension not in {"pdf", "txt"}:
+        raise HTTPException(
+            status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE,
+            detail="Only PDF and TXT opportunity files are accepted.",
+        )
+
+    file_bytes = await file.read()
+    await file.close()
+
+    if not file_bytes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The opportunity file is empty.",
+        )
+
+    try:
+        source_text = DocumentService.extract_text(
+            normalized_content_type,
+            file_bytes,
+        )
+    except (DocumentExtractionError, UnicodeDecodeError) as error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The opportunity file could not be read.",
+        ) from error
+
+    return ingest_opportunity(
+        OpportunityIngestRequest(
+            title=normalized_title,
+            source_text=source_text,
+            institution=institution,
+            degree_type=degree_type,
+            source_name=filename,
+        )
+    )
 
 
 @router.get(

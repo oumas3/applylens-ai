@@ -324,6 +324,49 @@ def test_ingest_opportunity_rejects_empty_source_text() -> None:
     assert response.status_code == 422
 
 
+def test_ingest_opportunity_file_extracts_txt_and_parses_requirements() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingest-file",
+        data={"title": "MSc Data Science", "degree_type": "MSc"},
+        files={
+            "file": (
+                "call.txt",
+                b"Applicants must hold a bachelor's degree.",
+                "text/plain",
+            )
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["source_name"] == "call.txt"
+    assert payload["source_text"] == "Applicants must hold a bachelor's degree."
+    assert payload["requirements"] == [
+        "Applicants must hold a bachelor's degree."
+    ]
+
+
+def test_ingest_opportunity_file_extracts_pdf_text() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingest-file",
+        data={"title": "PhD in AI"},
+        files={"file": ("call.pdf", make_test_pdf("Research experience required"), "application/pdf")},
+    )
+
+    assert response.status_code == 201
+    assert response.json()["source_text"] == "Research experience required"
+
+
+def test_ingest_opportunity_file_rejects_unsupported_type() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingest-file",
+        data={"title": "PhD in AI"},
+        files={"file": ("call.docx", b"not supported", "application/octet-stream")},
+    )
+
+    assert response.status_code == 415
+
+
 def test_ingest_opportunity_extracts_requirement_lines() -> None:
     response = client.post(
         "/api/v1/opportunities/ingest",
