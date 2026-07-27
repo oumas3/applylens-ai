@@ -345,6 +345,49 @@ def test_ingest_opportunity_extracts_requirement_lines() -> None:
     ]
 
 
+def test_analyse_ingested_opportunity_reuses_parsed_requirements() -> None:
+    ingest_response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={
+            "title": "MSc Data Science",
+            "source_text": (
+                "Applicants must hold a bachelor's degree.\n"
+                "English proficiency required."
+            ),
+        },
+    )
+    opportunity_id = ingest_response.json()["id"]
+
+    response = client.post(
+        f"/api/v1/opportunities/ingested/{opportunity_id}/analyse",
+        json={
+            "evidence": [
+                "Bachelor's degree completed",
+                "IELTS proficiency confirmed",
+            ]
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["title"] == "MSc Data Science"
+    assert payload["eligibility"] == "Eligible"
+    assert payload["matched_requirements"] == [
+        "Applicants must hold a bachelor's degree.",
+        "English proficiency required.",
+    ]
+
+
+def test_analyse_ingested_opportunity_rejects_unknown_id() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingested/missing/analyse",
+        json={"evidence": []},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Ingested opportunity not found."
+
+
 def test_analyse_opportunity_uses_uploaded_document_evidence() -> None:
     upload_response = client.post(
         "/api/v1/documents",

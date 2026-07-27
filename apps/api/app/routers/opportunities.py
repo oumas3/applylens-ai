@@ -36,6 +36,13 @@ class OpportunityRecord(BaseModel):
     requirements: list[str] = Field(default_factory=list)
 
 
+class OpportunityIngestAnalysisRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    evidence: list[str] = Field(default_factory=list)
+    document_ids: list[str] = Field(default_factory=list)
+
+
 ingested_opportunities: list[OpportunityRecord] = []
 
 
@@ -246,6 +253,43 @@ def ingest_opportunity(request: OpportunityIngestRequest) -> OpportunityRecord:
 )
 def list_ingested_opportunities() -> list[OpportunityRecord]:
     return ingested_opportunities
+
+
+@router.post(
+    "/ingested/{opportunity_id}/analyse",
+    response_model=OpportunityAnalysisResponse,
+    status_code=status.HTTP_200_OK,
+)
+def analyse_ingested_opportunity(
+    opportunity_id: str,
+    request: OpportunityIngestAnalysisRequest,
+) -> OpportunityAnalysisResponse:
+    opportunity = next(
+        (
+            item
+            for item in ingested_opportunities
+            if item.id == opportunity_id
+        ),
+        None,
+    )
+
+    if opportunity is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ingested opportunity not found.",
+        )
+
+    return analyse_opportunity(
+        OpportunityAnalysisRequest(
+            title=opportunity.title,
+            institution=opportunity.institution,
+            degree_type=opportunity.degree_type,
+            requirements=opportunity.requirements,
+            evidence=request.evidence,
+            document_ids=request.document_ids,
+            application_url=opportunity.source_url,
+        )
+    )
 
 
 @router.post(
