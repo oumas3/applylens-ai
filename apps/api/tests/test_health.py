@@ -1,6 +1,10 @@
+import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.routers import documents as documents_router
+from app.routers import reviews as reviews_router
+from app.routers import tasks as tasks_router
 
 from io import BytesIO
 
@@ -9,6 +13,19 @@ from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
 
 
 client = TestClient(app)
+
+
+@pytest.fixture(autouse=True)
+def isolate_persistent_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
+    """Keep each test independent from local runtime JSON storage."""
+    monkeypatch.setattr(reviews_router, "REVIEWS_FILE", tmp_path / "reviews.json")
+    monkeypatch.setattr(tasks_router, "TASKS_FILE", tmp_path / "tasks.json")
+
+    reviews_router.reviews[:] = []
+    tasks_router.tasks[:] = [
+        task.model_copy() for task in tasks_router.DEFAULT_TASKS
+    ]
+    documents_router.documents.clear()
 
 def test_upload_document_rejects_corrupted_pdf() -> None:
     response = client.post(
@@ -359,6 +376,40 @@ def test_analyse_opportunity_returns_structured_opportunity_metadata() -> None:
     assert payload["degree_type"] == "PhD"
     assert payload["application_url"] == "https://example.edu/apply"
     assert payload["required_documents"] == ["CV", "Transcript"]
+
+
+def test_analyse_opportunity_rejects_invalid_application_url() -> None:
+    response = client.post(
+        "/api/v1/opportunities/analyse",
+        json={
+            "title": "PhD in AI",
+            "application_url": "not-a-url",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_save_review_rejects_unknown_eligibility_status() -> None:
+    response = client.post(
+        "/api/v1/reviews",
+        json={
+            "id": 301,
+            "title": "MSc Data Science",
+            "eligibility": "Maybe",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_compare_reviews_requires_two_review_ids() -> None:
+    response = client.post(
+        "/api/v1/reviews/compare",
+        json={"review_ids": [301]},
+    )
+
+    assert response.status_code == 422
 
 
 def test_analyse_opportunity_rejects_unknown_document() -> None:

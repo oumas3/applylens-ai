@@ -1,7 +1,7 @@
 from datetime import date
 
 from fastapi import APIRouter, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 from typing import Literal
 
 from app.routers.documents import UPLOAD_DIRECTORY, documents
@@ -22,7 +22,7 @@ class OpportunityAnalysisRequest(BaseModel):
     requirements: list[str] = Field(default_factory=list)
     evidence: list[str] = Field(default_factory=list)
     document_ids: list[str] = Field(default_factory=list)
-    application_url: str | None = None
+    application_url: AnyHttpUrl | None = None
     required_documents: list[str] = Field(default_factory=list)
     deadline: str | None = None
     deadline_date: date | None = None
@@ -31,7 +31,7 @@ class OpportunityAnalysisRequest(BaseModel):
 
 class RequirementAnalysis(BaseModel):
     requirement: str
-    status: str
+    status: Literal["Eligible", "Not eligible", "Action required"]
     evidence: list[str]
     explanation: str
     action: str | None = None
@@ -50,7 +50,7 @@ class OpportunityAnalysisResponse(BaseModel):
     deadline_date: date | None = None
     funding: str | None = None
     funding_status: Literal["available", "unavailable", "unclear"] = "unclear"
-    application_url: str | None = None
+    application_url: AnyHttpUrl | None = None
     required_documents: list[str] = Field(default_factory=list)
 
 
