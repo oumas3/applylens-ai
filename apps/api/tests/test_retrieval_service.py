@@ -27,6 +27,52 @@ def test_chunk_text_splits_long_content_at_word_boundaries() -> None:
     assert [chunk.index for chunk in chunks] == [0, 1, 2]
 
 
-def test_chunk_text_rejects_non_positive_size() -> None:
+def test_chunk_text_returns_no_chunks_for_empty_text() -> None:
+    assert chunk_text("   \n\n  ") == []
+
+
+def test_chunk_text_keeps_short_paragraphs_together() -> None:
+    chunks = chunk_text("First paragraph.\n\nSecond paragraph.", max_chars=100)
+
+    assert len(chunks) == 1
+    assert chunks[0].text == "First paragraph.\n\nSecond paragraph."
+
+
+def test_chunk_text_splits_oversized_paragraphs() -> None:
+    chunks = chunk_text("one two three four five six seven", max_chars=12)
+
+    assert len(chunks) > 1
+    assert all(len(chunk.text) <= 12 for chunk in chunks)
+
+
+def test_chunk_text_preserves_metadata_on_every_chunk() -> None:
+    chunks = chunk_text(
+        "one two three four five six",
+        source_name="call.pdf",
+        page=4,
+        max_chars=10,
+    )
+
+    assert all(chunk.source_name == "call.pdf" for chunk in chunks)
+    assert all(chunk.page == 4 for chunk in chunks)
+
+
+def test_chunk_text_applies_configurable_overlap_without_exceeding_maximum() -> None:
+    chunks = chunk_text(
+        "one two three four five six",
+        max_chars=15,
+        overlap_chars=4,
+    )
+
+    assert len(chunks) > 1
+    assert all(len(chunk.text) <= 15 for chunk in chunks)
+    assert chunks[1].text.startswith(chunks[0].text[-4:].strip())
+
+
+def test_chunk_text_rejects_invalid_sizes_and_overlap() -> None:
     with pytest.raises(ValueError, match="max_chars must be positive"):
         chunk_text("text", max_chars=0)
+    with pytest.raises(ValueError, match="overlap_chars cannot be negative"):
+        chunk_text("text", overlap_chars=-1)
+    with pytest.raises(ValueError, match="overlap_chars must be smaller"):
+        chunk_text("text", max_chars=10, overlap_chars=10)
