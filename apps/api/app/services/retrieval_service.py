@@ -16,6 +16,11 @@ class TextChunk(BaseModel):
     index: int = Field(..., ge=0)
 
 
+class RetrievalResult(BaseModel):
+    chunk: TextChunk
+    score: float = Field(..., ge=0, le=1)
+
+
 def _chunk_id(
     text: str,
     source_name: str | None,
@@ -116,3 +121,36 @@ def chunk_text(
         )
         for index, piece in enumerate(pieces)
     ]
+
+
+def _tokens(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9]+", text.lower()))
+
+
+class InMemoryRetriever:
+    """Deterministic retrieval implementation used before semantic embeddings."""
+
+    def __init__(self) -> None:
+        self._chunks: dict[str, TextChunk] = {}
+
+    def index(self, chunks: list[TextChunk]) -> None:
+        for chunk in chunks:
+            self._chunks[chunk.chunk_id] = chunk
+
+    def search(self, query: str, *, top_k: int = 5) -> list[RetrievalResult]:
+        if top_k < 1:
+            raise ValueError("top_k must be positive")
+
+        query_tokens = _tokens(query)
+        if not query_tokens:
+            return []
+
+        results: list[RetrievalResult] = []
+        for chunk in self._chunks.values():
+            chunk_tokens = _tokens(chunk.text)
+            score = len(query_tokens & chunk_tokens) / len(query_tokens)
+            if score > 0:
+                results.append(RetrievalResult(chunk=chunk, score=score))
+
+        results.sort(key=lambda result: (-result.score, result.chunk.index))
+        return results[:top_k]

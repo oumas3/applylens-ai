@@ -1,6 +1,6 @@
 import pytest
 
-from app.services.retrieval_service import chunk_text
+from app.services.retrieval_service import InMemoryRetriever, chunk_text
 
 
 def test_chunk_text_preserves_source_metadata_and_stable_ids() -> None:
@@ -76,3 +76,47 @@ def test_chunk_text_rejects_invalid_sizes_and_overlap() -> None:
         chunk_text("text", overlap_chars=-1)
     with pytest.raises(ValueError, match="overlap_chars must be smaller"):
         chunk_text("text", max_chars=10, overlap_chars=10)
+
+
+def test_retriever_returns_relevant_chunks_with_source_metadata() -> None:
+    chunks = chunk_text(
+        "English proficiency is required.",
+        source_name="call.pdf",
+        page=3,
+    ) + chunk_text("Funding is available.", source_name="call.pdf", page=4)
+    retriever = InMemoryRetriever()
+    retriever.index(chunks)
+
+    results = retriever.search("English proficiency requirement", top_k=2)
+
+    assert len(results) == 1
+    assert results[0].score > 0
+    assert results[0].chunk.source_name == "call.pdf"
+    assert results[0].chunk.page == 3
+
+
+def test_retriever_ranks_more_relevant_chunks_first_and_limits_results() -> None:
+    chunks = chunk_text("degree requirement and research experience")
+    chunks += chunk_text("degree requirement")
+    chunks += chunk_text("funding information")
+    retriever = InMemoryRetriever()
+    retriever.index(chunks)
+
+    results = retriever.search("degree requirement research", top_k=2)
+
+    assert len(results) == 2
+    assert results[0].score > results[1].score
+
+
+def test_retriever_handles_empty_index_and_no_match() -> None:
+    retriever = InMemoryRetriever()
+
+    assert retriever.search("degree") == []
+
+    retriever.index(chunk_text("funding information"))
+    assert retriever.search("English proficiency") == []
+
+
+def test_retriever_rejects_non_positive_top_k() -> None:
+    with pytest.raises(ValueError, match="top_k must be positive"):
+        InMemoryRetriever().search("degree", top_k=0)
