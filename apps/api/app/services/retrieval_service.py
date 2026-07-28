@@ -192,6 +192,7 @@ class EmbeddingRetriever:
             score = sum(
                 left * right for left, right in zip(query_vector, vector)
             ) / (query_magnitude * vector_magnitude)
+            score = min(1.0, max(0.0, score))
             if score > 0:
                 results.append(RetrievalResult(chunk=chunk, score=score))
 
