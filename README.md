@@ -32,6 +32,19 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 - Produce eligibility status with supporting evidence and gaps
 - Surface application tasks, fees, and funding considerations
 - Add structured opportunity review flows in the UI
+
+### Sprint 4 â€” Evidence retrieval foundation
+
+- Split opportunity source text into traceable chunks with stable IDs
+- Support configurable chunk overlap while preserving source metadata
+- Rank matching evidence through a provider-neutral retrieval interface
+- Include a deterministic local hash embedding provider for development and tests
+- Search ingested opportunity evidence from the API and web interface
+- Send selected search results into the eligibility analysis evidence field
+
+The current retrieval implementation is intentionally local and deterministic. A
+production embedding provider and vector database are future extensions, not
+required for the current MVP.
 ## Local setup
 
 ### Web
