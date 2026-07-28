@@ -1,9 +1,12 @@
 from __future__ import annotations
 
 import hashlib
+import math
 import re
 
 from pydantic import BaseModel, ConfigDict, Field
+
+from app.services.embedding_service import EmbeddingProvider
 
 
 class TextChunk(BaseModel):
@@ -149,6 +152,46 @@ class InMemoryRetriever:
         for chunk in self._chunks.values():
             chunk_tokens = _tokens(chunk.text)
             score = len(query_tokens & chunk_tokens) / len(query_tokens)
+            if score > 0:
+                results.append(RetrievalResult(chunk=chunk, score=score))
+
+        results.sort(key=lambda result: (-result.score, result.chunk.index))
+        return results[:top_k]
+
+
+class EmbeddingRetriever:
+    """In-memory cosine retrieval using any compatible embedding provider."""
+
+    def __init__(self, provider: EmbeddingProvider) -> None:
+        self.provider = provider
+        self._vectors: dict[str, tuple[TextChunk, list[float]]] = {}
+
+    def index(self, chunks: list[TextChunk]) -> None:
+        vectors = self.provider.embed_many([chunk.text for chunk in chunks])
+        for chunk, vector in zip(chunks, vectors):
+            self._vectors[chunk.chunk_id] = (chunk, vector)
+
+    def search(self, query: str, *, top_k: int = 5) -> list[RetrievalResult]:
+        if top_k < 1:
+            raise ValueError("top_k must be positive")
+        if not query.strip():
+            return []
+
+        query_vector = self.provider.embed_text(query)
+        query_magnitude = math.sqrt(
+            sum(value * value for value in query_vector)
+        )
+        if query_magnitude == 0:
+            return []
+
+        results: list[RetrievalResult] = []
+        for chunk, vector in self._vectors.values():
+            vector_magnitude = math.sqrt(sum(value * value for value in vector))
+            if vector_magnitude == 0:
+                continue
+            score = sum(
+                left * right for left, right in zip(query_vector, vector)
+            ) / (query_magnitude * vector_magnitude)
             if score > 0:
                 results.append(RetrievalResult(chunk=chunk, score=score))
 

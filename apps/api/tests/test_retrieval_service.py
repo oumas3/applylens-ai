@@ -1,6 +1,26 @@
 import pytest
 
-from app.services.retrieval_service import InMemoryRetriever, chunk_text
+from app.services.retrieval_service import (
+    EmbeddingRetriever,
+    InMemoryRetriever,
+    chunk_text,
+)
+
+
+class MappingEmbeddingProvider:
+    dimension = 3
+
+    vectors = {
+        "english requirement": [1.0, 0.0, 0.0],
+        "ielts evidence": [0.9, 0.1, 0.0],
+        "funding details": [0.0, 1.0, 0.0],
+    }
+
+    def embed_text(self, text: str) -> list[float]:
+        return self.vectors[text]
+
+    def embed_many(self, texts: list[str]) -> list[list[float]]:
+        return [self.embed_text(text) for text in texts]
 
 
 def test_chunk_text_preserves_source_metadata_and_stable_ids() -> None:
@@ -120,3 +140,33 @@ def test_retriever_handles_empty_index_and_no_match() -> None:
 def test_retriever_rejects_non_positive_top_k() -> None:
     with pytest.raises(ValueError, match="top_k must be positive"):
         InMemoryRetriever().search("degree", top_k=0)
+
+
+def test_embedding_retriever_ranks_by_cosine_similarity_and_preserves_metadata() -> None:
+    provider = MappingEmbeddingProvider()
+    retriever = EmbeddingRetriever(provider)
+    retriever.index(
+        [
+            chunk_text("english requirement", source_name="call.pdf", page=1)[0],
+            chunk_text("ielts evidence", source_name="cv.pdf", page=2)[0],
+            chunk_text("funding details", source_name="call.pdf", page=3)[0],
+        ]
+    )
+
+    results = retriever.search("english requirement", top_k=2)
+
+    assert len(results) == 2
+    assert results[0].chunk.source_name == "call.pdf"
+    assert results[0].chunk.page == 1
+    assert results[0].score > results[1].score
+
+
+def test_embedding_retriever_handles_empty_query_and_limits_results() -> None:
+    provider = MappingEmbeddingProvider()
+    retriever = EmbeddingRetriever(provider)
+    retriever.index(
+        [chunk_text("english requirement")[0], chunk_text("funding details")[0]]
+    )
+
+    assert retriever.search("   ") == []
+    assert len(retriever.search("english requirement", top_k=1)) == 1
