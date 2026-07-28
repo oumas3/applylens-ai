@@ -426,6 +426,8 @@ export default function App() {
     setAnalysisDegreeType(ingestedOpportunity.degree_type ?? '')
     setAnalysisRequirements(ingestedOpportunity.requirements.join('\n'))
     setAnalysisApplicationUrl(ingestedOpportunity.source_url ?? '')
+    setRetrievalResults([])
+    setRetrievalQuery('')
     setAnalysisStatus('Opportunity details loaded. Add evidence and analyse it.')
     document.getElementById('opportunity-analysis-form')?.scrollIntoView({
       behavior: 'smooth',
@@ -441,7 +443,33 @@ export default function App() {
     setAnalysisDegreeType(opportunity.degree_type ?? '')
     setAnalysisRequirements(opportunity.requirements.join('\n'))
     setAnalysisApplicationUrl(opportunity.source_url ?? '')
+    setRetrievalResults([])
+    setRetrievalQuery('')
     setAnalysisStatus('Saved opportunity loaded. Add evidence and analyse it.')
+  }
+
+  function useRetrievalResultsAsEvidence() {
+    if (retrievalResults.length === 0) {
+      return
+    }
+
+    setAnalysisEvidence((current) => {
+      const existing = current
+        .split('\n')
+        .map((item) => item.trim())
+        .filter(Boolean)
+      const additions = retrievalResults.map((result) => {
+        const source = result.chunk.source_name ?? 'opportunity source'
+        const page = result.chunk.page ? `, page ${result.chunk.page}` : ''
+        return `${result.chunk.text} [Source: ${source}${page}]`
+      })
+      return Array.from(new Set([...existing, ...additions])).join('\n')
+    })
+    setAnalysisStatus('Search results added to evidence. Review them before analysing.')
+    document.getElementById('opportunity-analysis-form')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
   }
 
   async function deleteSavedOpportunity(opportunityId: string) {
@@ -859,18 +887,23 @@ async function handlePreviewText(
                   </button>
                 </form>
                 {retrievalResults.length > 0 && (
-                  <ul>
-                    {retrievalResults.map((result) => (
-                      <li key={result.chunk.chunk_id}>
-                        <strong>{(result.score * 100).toFixed(1)}% match</strong>
-                        <p>{result.chunk.text}</p>
-                        <p>
-                          Source: {result.chunk.source_name ?? 'Unknown'}
-                          {result.chunk.page ? `, page ${result.chunk.page}` : ''}
-                        </p>
-                      </li>
-                    ))}
-                  </ul>
+                  <>
+                    <button type="button" onClick={useRetrievalResultsAsEvidence}>
+                      Use results as evidence
+                    </button>
+                    <ul>
+                      {retrievalResults.map((result) => (
+                        <li key={result.chunk.chunk_id}>
+                          <strong>{(result.score * 100).toFixed(1)}% match</strong>
+                          <p>{result.chunk.text}</p>
+                          <p>
+                            Source: {result.chunk.source_name ?? 'Unknown'}
+                            {result.chunk.page ? `, page ${result.chunk.page}` : ''}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
                 )}
               </section>
             )}
