@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -13,6 +14,17 @@ class Settings(BaseSettings):
     api_port: int = 8000
     web_origin: str = "http://localhost:5173"
     database_url: str | None = None
+    retrieval_chunk_max_chars: int = Field(default=1200, gt=0, le=10000)
+    retrieval_chunk_overlap_chars: int = Field(default=100, ge=0, le=9999)
+    retrieval_embedding_dimension: int = Field(default=32, gt=0, le=2048)
+
+    @model_validator(mode="after")
+    def validate_retrieval_settings(self) -> "Settings":
+        if self.retrieval_chunk_overlap_chars >= self.retrieval_chunk_max_chars:
+            raise ValueError(
+                "retrieval_chunk_overlap_chars must be smaller than retrieval_chunk_max_chars"
+            )
+        return self
 
     model_config = SettingsConfigDict(
         env_file=ROOT_DIR / ".env",

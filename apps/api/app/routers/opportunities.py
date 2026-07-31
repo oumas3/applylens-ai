@@ -10,6 +10,7 @@ from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 from typing import Literal
 
+from app.config import get_settings
 from app.routers.documents import UPLOAD_DIRECTORY, documents
 from app.services.document_service import DocumentExtractionError, DocumentService
 from app.services.embedding_service import HashEmbeddingProvider
@@ -449,12 +450,16 @@ def search_ingested_opportunity_evidence(
             detail="Ingested opportunity not found.",
         )
 
+    settings = get_settings()
     chunks = chunk_text(
         opportunity.source_text,
         source_name=opportunity.source_name,
-        overlap_chars=100,
+        max_chars=settings.retrieval_chunk_max_chars,
+        overlap_chars=settings.retrieval_chunk_overlap_chars,
     )
-    retriever = EmbeddingRetriever(HashEmbeddingProvider())
+    retriever = EmbeddingRetriever(
+        HashEmbeddingProvider(settings.retrieval_embedding_dimension)
+    )
     retriever.index(chunks)
     return retriever.search(request.query, top_k=request.top_k)
 
