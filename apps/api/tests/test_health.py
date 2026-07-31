@@ -538,6 +538,65 @@ def test_search_ingested_opportunity_rejects_unknown_id() -> None:
     assert response.status_code == 404
 
 
+def test_search_ingested_opportunity_ranks_matching_evidence_first() -> None:
+    ingest_response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={
+            "title": "MSc Data Science",
+            "source_text": (
+                "English proficiency is required for admission.\n\n"
+                "A scholarship may be available."
+            ),
+            "source_name": "call.txt",
+        },
+    )
+    opportunity_id = ingest_response.json()["id"]
+
+    response = client.post(
+        f"/api/v1/opportunities/ingested/{opportunity_id}/evidence-search",
+        json={"query": "English proficiency", "top_k": 1},
+    )
+
+    assert response.status_code == 200
+    results = response.json()
+    assert len(results) == 1
+    assert "English proficiency" in results[0]["chunk"]["text"]
+
+
+def test_search_ingested_opportunity_returns_empty_for_unrelated_query() -> None:
+    ingest_response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={
+            "title": "MSc Data Science",
+            "source_text": "English proficiency is required.",
+        },
+    )
+    opportunity_id = ingest_response.json()["id"]
+
+    response = client.post(
+        f"/api/v1/opportunities/ingested/{opportunity_id}/evidence-search",
+        json={"query": "housing requirement", "top_k": 5},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_search_ingested_opportunity_rejects_invalid_top_k() -> None:
+    ingest_response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={"title": "MSc Data Science", "source_text": "Requirements."},
+    )
+    opportunity_id = ingest_response.json()["id"]
+
+    response = client.post(
+        f"/api/v1/opportunities/ingested/{opportunity_id}/evidence-search",
+        json={"query": "requirements", "top_k": 21},
+    )
+
+    assert response.status_code == 422
+
+
 def test_analyse_opportunity_uses_uploaded_document_evidence() -> None:
     upload_response = client.post(
         "/api/v1/documents",
