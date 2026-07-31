@@ -33,6 +33,7 @@ def isolate_persistent_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     ]
     documents_router.documents.clear()
     opportunities_router.ingested_opportunities.clear()
+    opportunities_router._retrieval_cache.clear()
 
 def test_upload_document_rejects_corrupted_pdf() -> None:
     response = client.post(
@@ -561,6 +562,33 @@ def test_search_ingested_opportunity_ranks_matching_evidence_first() -> None:
     results = response.json()
     assert len(results) == 1
     assert "English proficiency" in results[0]["chunk"]["text"]
+
+
+def test_search_ingested_opportunity_reuses_cached_index() -> None:
+    ingest_response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={
+            "title": "MSc Data Science",
+            "source_text": "English proficiency is required.",
+        },
+    )
+    opportunity_id = ingest_response.json()["id"]
+    search_url = (
+        f"/api/v1/opportunities/ingested/{opportunity_id}/evidence-search"
+    )
+
+    first_response = client.post(
+        search_url,
+        json={"query": "English proficiency", "top_k": 1},
+    )
+    second_response = client.post(
+        search_url,
+        json={"query": "required", "top_k": 1},
+    )
+
+    assert first_response.status_code == 200
+    assert second_response.status_code == 200
+    assert list(opportunities_router._retrieval_cache) == [opportunity_id]
 
 
 def test_search_ingested_opportunity_returns_empty_for_unrelated_query() -> None:

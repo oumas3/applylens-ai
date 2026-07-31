@@ -1,4 +1,5 @@
 from datetime import date
+import hashlib
 from io import BytesIO
 import json
 from pathlib import Path
@@ -95,6 +96,13 @@ def _persist_opportunities() -> None:
 
 
 ingested_opportunities: list[OpportunityRecord] = _load_opportunities()
+_retrieval_cache: dict[
+    str,
+    tuple[
+        tuple[str, str | None, int, int, int, str],
+        InMemoryRetriever | EmbeddingRetriever,
+    ],
+] = {}
 
 
 def _extract_requirements(source_text: str) -> list[str]:
@@ -423,6 +431,7 @@ def delete_ingested_opportunity(opportunity_id: str) -> None:
     for index, opportunity in enumerate(ingested_opportunities):
         if opportunity.id == opportunity_id:
             ingested_opportunities.pop(index)
+            _retrieval_cache.pop(opportunity_id, None)
             _persist_opportunities()
             return
 
@@ -452,19 +461,35 @@ def search_ingested_opportunity_evidence(
         )
 
     settings = get_settings()
-    chunks = chunk_text(
-        opportunity.source_text,
-        source_name=opportunity.source_name,
-        max_chars=settings.retrieval_chunk_max_chars,
-        overlap_chars=settings.retrieval_chunk_overlap_chars,
+    source_hash = hashlib.sha256(
+        opportunity.source_text.encode("utf-8")
+    ).hexdigest()
+    cache_key = (
+        source_hash,
+        opportunity.source_name,
+        settings.retrieval_chunk_max_chars,
+        settings.retrieval_chunk_overlap_chars,
+        settings.retrieval_embedding_dimension,
+        settings.retrieval_provider,
     )
-    if settings.retrieval_provider == "hash":
-        retriever = EmbeddingRetriever(
-            HashEmbeddingProvider(settings.retrieval_embedding_dimension)
-        )
+    cached = _retrieval_cache.get(opportunity_id)
+    if cached is not None and cached[0] == cache_key:
+        retriever = cached[1]
     else:
-        retriever = InMemoryRetriever()
-    retriever.index(chunks)
+        chunks = chunk_text(
+            opportunity.source_text,
+            source_name=opportunity.source_name,
+            max_chars=settings.retrieval_chunk_max_chars,
+            overlap_chars=settings.retrieval_chunk_overlap_chars,
+        )
+        if settings.retrieval_provider == "hash":
+            retriever = EmbeddingRetriever(
+                HashEmbeddingProvider(settings.retrieval_embedding_dimension)
+            )
+        else:
+            retriever = InMemoryRetriever()
+        retriever.index(chunks)
+        _retrieval_cache[opportunity_id] = (cache_key, retriever)
     return retriever.search(request.query, top_k=request.top_k)
 
 
