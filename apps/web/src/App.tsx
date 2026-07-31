@@ -151,6 +151,7 @@ export default function App() {
   const [retrievalQuery, setRetrievalQuery] = useState('')
   const [retrievalResults, setRetrievalResults] = useState<RetrievalResult[]>([])
   const [retrievalLoading, setRetrievalLoading] = useState(false)
+  const [retrievalSearched, setRetrievalSearched] = useState(false)
   const [tasks, setTasks] = useState<TaskItem[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
   const [reviews, setReviews] = useState<OpportunityReview[]>([])
@@ -428,6 +429,7 @@ export default function App() {
     setAnalysisApplicationUrl(ingestedOpportunity.source_url ?? '')
     setRetrievalResults([])
     setRetrievalQuery('')
+    setRetrievalSearched(false)
     setAnalysisStatus('Opportunity details loaded. Add evidence and analyse it.')
     document.getElementById('opportunity-analysis-form')?.scrollIntoView({
       behavior: 'smooth',
@@ -445,6 +447,7 @@ export default function App() {
     setAnalysisApplicationUrl(opportunity.source_url ?? '')
     setRetrievalResults([])
     setRetrievalQuery('')
+    setRetrievalSearched(false)
     setAnalysisStatus('Saved opportunity loaded. Add evidence and analyse it.')
   }
 
@@ -520,6 +523,7 @@ export default function App() {
         throw new Error('Unable to search opportunity evidence.')
       }
       setRetrievalResults(await response.json())
+      setRetrievalSearched(true)
     } catch (error) {
       setOpportunityStatus(
         error instanceof Error
@@ -527,6 +531,7 @@ export default function App() {
           : 'Unable to search opportunity evidence.'
       )
       setRetrievalResults([])
+      setRetrievalSearched(false)
     } finally {
       setRetrievalLoading(false)
     }
@@ -904,6 +909,11 @@ async function handlePreviewText(
                       ))}
                     </ul>
                   </>
+                )}
+                {retrievalSearched && retrievalResults.length === 0 && !retrievalLoading && (
+                  <p className="upload-status">
+                    No matching evidence was found in this opportunity source.
+                  </p>
                 )}
               </section>
             )}
