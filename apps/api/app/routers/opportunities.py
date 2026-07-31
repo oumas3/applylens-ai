@@ -16,6 +16,7 @@ from app.services.document_service import DocumentExtractionError, DocumentServi
 from app.services.embedding_service import HashEmbeddingProvider
 from app.services.retrieval_service import (
     EmbeddingRetriever,
+    InMemoryRetriever,
     RetrievalResult,
     chunk_text,
 )
@@ -457,9 +458,12 @@ def search_ingested_opportunity_evidence(
         max_chars=settings.retrieval_chunk_max_chars,
         overlap_chars=settings.retrieval_chunk_overlap_chars,
     )
-    retriever = EmbeddingRetriever(
-        HashEmbeddingProvider(settings.retrieval_embedding_dimension)
-    )
+    if settings.retrieval_provider == "hash":
+        retriever = EmbeddingRetriever(
+            HashEmbeddingProvider(settings.retrieval_embedding_dimension)
+        )
+    else:
+        retriever = InMemoryRetriever()
     retriever.index(chunks)
     return retriever.search(request.query, top_k=request.top_k)
 

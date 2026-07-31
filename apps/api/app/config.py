@@ -1,5 +1,6 @@
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -17,6 +18,7 @@ class Settings(BaseSettings):
     retrieval_chunk_max_chars: int = Field(default=1200, gt=0, le=10000)
     retrieval_chunk_overlap_chars: int = Field(default=100, ge=0, le=9999)
     retrieval_embedding_dimension: int = Field(default=32, gt=0, le=2048)
+    retrieval_provider: Literal["lexical", "hash"] = "lexical"
 
     @model_validator(mode="after")
     def validate_retrieval_settings(self) -> "Settings":
