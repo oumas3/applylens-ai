@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     retrieval_chunk_overlap_chars: int = Field(default=100, ge=0, le=9999)
     retrieval_embedding_dimension: int = Field(default=32, gt=0, le=2048)
     retrieval_provider: Literal["lexical", "hash", "openai"] = "lexical"
+    retrieval_storage: Literal["memory", "pgvector"] = "memory"
     openai_api_key: SecretStr | None = None
     openai_embedding_model: str = "text-embedding-3-small"
     openai_base_url: str = "https://api.openai.com/v1"
@@ -31,6 +32,10 @@ class Settings(BaseSettings):
             )
         if self.retrieval_provider == "openai" and self.openai_api_key is None:
             raise ValueError("OPENAI_API_KEY is required when retrieval_provider is openai")
+        if self.retrieval_storage == "pgvector" and not self.database_url:
+            raise ValueError("DATABASE_URL is required when retrieval_storage is pgvector")
+        if self.retrieval_storage == "pgvector" and self.retrieval_provider != "openai":
+            raise ValueError("retrieval_provider must be openai when retrieval_storage is pgvector")
         return self
 
     model_config = SettingsConfigDict(

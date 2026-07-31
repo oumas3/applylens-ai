@@ -53,6 +53,10 @@ It creates a persistent `opportunity_chunks` table for OpenAI
 `text-embedding-3-small` vectors and a cosine-similarity HNSW index. Applying
 it requires PostgreSQL with the `pgvector` extension installed; local retrieval
 continues to work without that database.
+
+To activate persistent retrieval in a deployment, set `RETRIEVAL_PROVIDER=openai`,
+`RETRIEVAL_STORAGE=pgvector`, `OPENAI_API_KEY`, and `DATABASE_URL`, then apply
+the migration before starting the API.
 ## Local setup
 
 ### Web

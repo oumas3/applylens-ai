@@ -11,6 +11,7 @@ def test_retrieval_settings_have_stable_development_defaults() -> None:
     assert settings.retrieval_chunk_overlap_chars == 100
     assert settings.retrieval_embedding_dimension == 32
     assert settings.retrieval_provider == "lexical"
+    assert settings.retrieval_storage == "memory"
 
 
 def test_retrieval_overlap_must_be_smaller_than_chunk_size() -> None:
@@ -46,3 +47,34 @@ def test_retrieval_provider_rejects_unknown_mode() -> None:
 def test_openai_retrieval_requires_api_key() -> None:
     with pytest.raises(ValidationError, match="OPENAI_API_KEY is required"):
         Settings(_env_file=None, retrieval_provider="openai")
+
+
+def test_pgvector_storage_requires_database_url() -> None:
+    with pytest.raises(ValidationError, match="DATABASE_URL is required"):
+        Settings(
+            _env_file=None,
+            retrieval_provider="openai",
+            openai_api_key="test-key",
+            retrieval_storage="pgvector",
+        )
+
+
+def test_pgvector_storage_accepts_database_url() -> None:
+    settings = Settings(
+        _env_file=None,
+        retrieval_provider="openai",
+        openai_api_key="test-key",
+        retrieval_storage="pgvector",
+        database_url="postgresql://localhost/applylens",
+    )
+
+    assert settings.retrieval_storage == "pgvector"
+
+
+def test_pgvector_storage_requires_openai_provider() -> None:
+    with pytest.raises(ValidationError, match="retrieval_provider must be openai"):
+        Settings(
+            _env_file=None,
+            retrieval_storage="pgvector",
+            database_url="postgresql://localhost/applylens",
+        )

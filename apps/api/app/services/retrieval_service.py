@@ -198,3 +198,90 @@ class EmbeddingRetriever:
 
         results.sort(key=lambda result: (-result.score, result.chunk.index))
         return results[:top_k]
+
+
+class PgVectorRetriever:
+    """Persistent cosine retrieval backed by PostgreSQL and pgvector."""
+
+    def __init__(self, database_url: str, provider: EmbeddingProvider, opportunity_id: str) -> None:
+        if not database_url.strip():
+            raise ValueError("database_url must not be empty")
+        self.database_url = database_url
+        self.provider = provider
+        self.opportunity_id = opportunity_id
+
+    @staticmethod
+    def _vector_literal(vector: list[float]) -> str:
+        return "[" + ",".join(str(value) for value in vector) + "]"
+
+    def _connect(self):
+        try:
+            from psycopg import connect
+        except ImportError as error:
+            raise RuntimeError("psycopg is required for pgvector retrieval") from error
+        return connect(self.database_url)
+
+    def index(self, chunks: list[TextChunk]) -> None:
+        vectors = self.provider.embed_many([chunk.text for chunk in chunks])
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    "DELETE FROM opportunity_chunks WHERE opportunity_id = %s",
+                    (self.opportunity_id,),
+                )
+                cursor.executemany(
+                    """
+                    INSERT INTO opportunity_chunks
+                        (opportunity_id, chunk_id, chunk_text, source_name, page, chunk_index, embedding)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s::vector)
+                    """,
+                    [
+                        (
+                            self.opportunity_id,
+                            chunk.chunk_id,
+                            chunk.text,
+                            chunk.source_name,
+                            chunk.page,
+                            chunk.index,
+                            self._vector_literal(vector),
+                        )
+                        for chunk, vector in zip(chunks, vectors)
+                    ],
+                )
+
+    def search(self, query: str, *, top_k: int = 5) -> list[RetrievalResult]:
+        if top_k < 1:
+            raise ValueError("top_k must be positive")
+        if not query.strip():
+            return []
+
+        query_vector = self._vector_literal(self.provider.embed_text(query))
+        with self._connect() as connection:
+            with connection.cursor() as cursor:
+                cursor.execute(
+                    """
+                    SELECT chunk_id, chunk_text, source_name, page, chunk_index,
+                           1 - (embedding <=> %s::vector) AS score
+                    FROM opportunity_chunks
+                    WHERE opportunity_id = %s
+                    ORDER BY embedding <=> %s::vector
+                    LIMIT %s
+                    """,
+                    (query_vector, self.opportunity_id, query_vector, top_k),
+                )
+                rows = cursor.fetchall()
+
+        return [
+            RetrievalResult(
+                chunk=TextChunk(
+                    chunk_id=row[0],
+                    text=row[1],
+                    source_name=row[2],
+                    page=row[3],
+                    index=row[4],
+                ),
+                score=max(0.0, min(1.0, float(row[5]))),
+            )
+            for row in rows
+            if row[5] > 0
+        ]

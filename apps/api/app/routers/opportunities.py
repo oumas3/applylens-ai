@@ -21,6 +21,7 @@ from app.services.embedding_service import (
 from app.services.retrieval_service import (
     EmbeddingRetriever,
     InMemoryRetriever,
+    PgVectorRetriever,
     RetrievalResult,
     chunk_text,
 )
@@ -102,8 +103,8 @@ ingested_opportunities: list[OpportunityRecord] = _load_opportunities()
 _retrieval_cache: dict[
     str,
     tuple[
-        tuple[str, str | None, int, int, int, str],
-        InMemoryRetriever | EmbeddingRetriever,
+        tuple[str, str | None, int, int, int, str, str],
+        InMemoryRetriever | EmbeddingRetriever | PgVectorRetriever,
     ],
 ] = {}
 
@@ -474,6 +475,7 @@ def search_ingested_opportunity_evidence(
         settings.retrieval_chunk_overlap_chars,
         settings.retrieval_embedding_dimension,
         settings.retrieval_provider,
+        settings.retrieval_storage,
     )
     cached = _retrieval_cache.get(opportunity_id)
     if cached is not None and cached[0] == cache_key:
@@ -486,13 +488,19 @@ def search_ingested_opportunity_evidence(
             overlap_chars=settings.retrieval_chunk_overlap_chars,
         )
         if settings.retrieval_provider == "openai":
-            retriever = EmbeddingRetriever(
-                OpenAIEmbeddingProvider(
-                    settings.openai_api_key.get_secret_value(),
-                    model=settings.openai_embedding_model,
-                    base_url=settings.openai_base_url,
-                )
+            provider = OpenAIEmbeddingProvider(
+                settings.openai_api_key.get_secret_value(),
+                model=settings.openai_embedding_model,
+                base_url=settings.openai_base_url,
             )
+            if settings.retrieval_storage == "pgvector":
+                retriever = PgVectorRetriever(
+                    settings.database_url,
+                    provider,
+                    opportunity_id,
+                )
+            else:
+                retriever = EmbeddingRetriever(provider)
         elif settings.retrieval_provider == "hash":
             retriever = EmbeddingRetriever(
                 HashEmbeddingProvider(settings.retrieval_embedding_dimension)
