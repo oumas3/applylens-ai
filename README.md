@@ -45,6 +45,14 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 The current retrieval implementation is intentionally local and deterministic. A
 production embedding provider and vector database are future extensions, not
 required for the current MVP.
+
+### Production vector storage preparation
+
+The first pgvector migration is at `apps/api/migrations/001_pgvector.sql`.
+It creates a persistent `opportunity_chunks` table for OpenAI
+`text-embedding-3-small` vectors and a cosine-similarity HNSW index. Applying
+it requires PostgreSQL with the `pgvector` extension installed; local retrieval
+continues to work without that database.
 ## Local setup
 
 ### Web

@@ -2,6 +2,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.config import get_settings
 from app.routers import documents as documents_router
 from app.routers import opportunities as opportunities_router
 from app.routers import reviews as reviews_router
@@ -19,6 +20,8 @@ client = TestClient(app)
 @pytest.fixture(autouse=True)
 def isolate_persistent_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Keep each test independent from local runtime JSON storage."""
+    monkeypatch.setenv("RETRIEVAL_PROVIDER", "lexical")
+    get_settings.cache_clear()
     monkeypatch.setattr(reviews_router, "REVIEWS_FILE", tmp_path / "reviews.json")
     monkeypatch.setattr(tasks_router, "TASKS_FILE", tmp_path / "tasks.json")
     monkeypatch.setattr(
