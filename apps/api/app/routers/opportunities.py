@@ -12,6 +12,12 @@ from typing import Literal
 
 from app.routers.documents import UPLOAD_DIRECTORY, documents
 from app.services.document_service import DocumentExtractionError, DocumentService
+from app.services.embedding_service import HashEmbeddingProvider
+from app.services.retrieval_service import (
+    EmbeddingRetriever,
+    RetrievalResult,
+    chunk_text,
+)
 
 router = APIRouter(
     prefix="/api/v1/opportunities",
@@ -55,6 +61,13 @@ class OpportunityIngestAnalysisRequest(BaseModel):
 
     evidence: list[str] = Field(default_factory=list)
     document_ids: list[str] = Field(default_factory=list)
+
+
+class EvidenceSearchRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    query: str = Field(..., min_length=1)
+    top_k: int = Field(default=5, ge=1, le=20)
 
 
 def _load_opportunities() -> list[OpportunityRecord]:
@@ -415,6 +428,35 @@ def delete_ingested_opportunity(opportunity_id: str) -> None:
         status_code=status.HTTP_404_NOT_FOUND,
         detail="Ingested opportunity not found.",
     )
+
+
+@router.post(
+    "/ingested/{opportunity_id}/evidence-search",
+    response_model=list[RetrievalResult],
+    status_code=status.HTTP_200_OK,
+)
+def search_ingested_opportunity_evidence(
+    opportunity_id: str,
+    request: EvidenceSearchRequest,
+) -> list[RetrievalResult]:
+    opportunity = next(
+        (item for item in ingested_opportunities if item.id == opportunity_id),
+        None,
+    )
+    if opportunity is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Ingested opportunity not found.",
+        )
+
+    chunks = chunk_text(
+        opportunity.source_text,
+        source_name=opportunity.source_name,
+        overlap_chars=100,
+    )
+    retriever = EmbeddingRetriever(HashEmbeddingProvider())
+    retriever.index(chunks)
+    return retriever.search(request.query, top_k=request.top_k)
 
 
 @router.post(

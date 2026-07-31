@@ -500,6 +500,44 @@ def test_delete_ingested_opportunity_rejects_unknown_id() -> None:
     assert response.json()["detail"] == "Ingested opportunity not found."
 
 
+def test_search_ingested_opportunity_returns_traceable_evidence_chunks() -> None:
+    ingest_response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={
+            "title": "PhD in AI",
+            "source_text": (
+                "English proficiency required.\n\n"
+                "Funding information is available."
+            ),
+            "source_name": "call.txt",
+        },
+    )
+    opportunity_id = ingest_response.json()["id"]
+
+    response = client.post(
+        f"/api/v1/opportunities/ingested/{opportunity_id}/evidence-search",
+        json={
+            "query": "English proficiency required.\n\nFunding information is available.",
+            "top_k": 1,
+        },
+    )
+
+    assert response.status_code == 200
+    results = response.json()
+    assert len(results) == 1
+    assert results[0]["chunk"]["source_name"] == "call.txt"
+    assert results[0]["score"] > 0
+
+
+def test_search_ingested_opportunity_rejects_unknown_id() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingested/missing/evidence-search",
+        json={"query": "degree"},
+    )
+
+    assert response.status_code == 404
+
+
 def test_analyse_opportunity_uses_uploaded_document_evidence() -> None:
     upload_response = client.post(
         "/api/v1/documents",

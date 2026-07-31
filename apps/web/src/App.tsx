@@ -59,6 +59,17 @@ type IngestedOpportunity = {
   }>
 }
 
+type RetrievalResult = {
+  chunk: {
+    chunk_id: string
+    text: string
+    source_name?: string | null
+    page?: number | null
+    index: number
+  }
+  score: number
+}
+
 type TaskItem = {
   id: number
   title: string
@@ -137,6 +148,9 @@ export default function App() {
   >([])
   const [ingestedOpportunitiesLoading, setIngestedOpportunitiesLoading] =
     useState(false)
+  const [retrievalQuery, setRetrievalQuery] = useState('')
+  const [retrievalResults, setRetrievalResults] = useState<RetrievalResult[]>([])
+  const [retrievalLoading, setRetrievalLoading] = useState(false)
   const [tasks, setTasks] = useState<TaskItem[]>([])
   const [tasksLoading, setTasksLoading] = useState(false)
   const [reviews, setReviews] = useState<OpportunityReview[]>([])
@@ -412,6 +426,8 @@ export default function App() {
     setAnalysisDegreeType(ingestedOpportunity.degree_type ?? '')
     setAnalysisRequirements(ingestedOpportunity.requirements.join('\n'))
     setAnalysisApplicationUrl(ingestedOpportunity.source_url ?? '')
+    setRetrievalResults([])
+    setRetrievalQuery('')
     setAnalysisStatus('Opportunity details loaded. Add evidence and analyse it.')
     document.getElementById('opportunity-analysis-form')?.scrollIntoView({
       behavior: 'smooth',
@@ -427,7 +443,33 @@ export default function App() {
     setAnalysisDegreeType(opportunity.degree_type ?? '')
     setAnalysisRequirements(opportunity.requirements.join('\n'))
     setAnalysisApplicationUrl(opportunity.source_url ?? '')
+    setRetrievalResults([])
+    setRetrievalQuery('')
     setAnalysisStatus('Saved opportunity loaded. Add evidence and analyse it.')
+  }
+
+  function useRetrievalResultsAsEvidence() {
+    if (retrievalResults.length === 0) {
+      return
+    }
+
+    setAnalysisEvidence((current) => {
+      const existing = current
+        .split('\n')
+        .map((item) => item.trim())
+        .filter(Boolean)
+      const additions = retrievalResults.map((result) => {
+        const source = result.chunk.source_name ?? 'opportunity source'
+        const page = result.chunk.page ? `, page ${result.chunk.page}` : ''
+        return `${result.chunk.text} [Source: ${source}${page}]`
+      })
+      return Array.from(new Set([...existing, ...additions])).join('\n')
+    })
+    setAnalysisStatus('Search results added to evidence. Review them before analysing.')
+    document.getElementById('opportunity-analysis-form')?.scrollIntoView({
+      behavior: 'smooth',
+      block: 'start',
+    })
   }
 
   async function deleteSavedOpportunity(opportunityId: string) {
@@ -454,6 +496,39 @@ export default function App() {
           ? error.message
           : 'Unable to delete saved opportunity.'
       )
+    }
+  }
+
+  async function searchOpportunityEvidence(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!ingestedOpportunity || !retrievalQuery.trim()) {
+      setOpportunityStatus('Select an opportunity and enter a search question.')
+      return
+    }
+
+    setRetrievalLoading(true)
+    try {
+      const response = await fetch(
+        `${API_URL}/api/v1/opportunities/ingested/${ingestedOpportunity.id}/evidence-search`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: retrievalQuery.trim(), top_k: 5 }),
+        }
+      )
+      if (!response.ok) {
+        throw new Error('Unable to search opportunity evidence.')
+      }
+      setRetrievalResults(await response.json())
+    } catch (error) {
+      setOpportunityStatus(
+        error instanceof Error
+          ? error.message
+          : 'Unable to search opportunity evidence.'
+      )
+      setRetrievalResults([])
+    } finally {
+      setRetrievalLoading(false)
     }
   }
 async function handlePreviewText(
@@ -798,6 +873,38 @@ async function handlePreviewText(
                 <button type="button" onClick={useIngestedOpportunity}>
                   Use for analysis
                 </button>
+                <form onSubmit={searchOpportunityEvidence}>
+                  <label className="upload-field">
+                    <span>Search source evidence</span>
+                    <input
+                      value={retrievalQuery}
+                      onChange={(event) => setRetrievalQuery(event.target.value)}
+                      placeholder="What English proficiency evidence is required?"
+                    />
+                  </label>
+                  <button type="submit" disabled={retrievalLoading}>
+                    {retrievalLoading ? 'Searching...' : 'Search evidence'}
+                  </button>
+                </form>
+                {retrievalResults.length > 0 && (
+                  <>
+                    <button type="button" onClick={useRetrievalResultsAsEvidence}>
+                      Use results as evidence
+                    </button>
+                    <ul>
+                      {retrievalResults.map((result) => (
+                        <li key={result.chunk.chunk_id}>
+                          <strong>{(result.score * 100).toFixed(1)}% match</strong>
+                          <p>{result.chunk.text}</p>
+                          <p>
+                            Source: {result.chunk.source_name ?? 'Unknown'}
+                            {result.chunk.page ? `, page ${result.chunk.page}` : ''}
+                          </p>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                )}
               </section>
             )}
 
