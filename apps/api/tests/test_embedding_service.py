@@ -2,7 +2,7 @@ import math
 
 import pytest
 
-from app.services.embedding_service import HashEmbeddingProvider
+from app.services.embedding_service import HashEmbeddingProvider, OpenAIEmbeddingProvider
 
 
 def test_hash_embedding_has_configured_dimension_and_unit_length() -> None:
@@ -36,3 +36,11 @@ def test_hash_embedding_rejects_invalid_input() -> None:
 
     with pytest.raises(ValueError, match="text must not be empty"):
         HashEmbeddingProvider().embed_text("   ")
+
+
+def test_openai_embedding_provider_validates_configuration() -> None:
+    with pytest.raises(ValueError, match="api_key must not be empty"):
+        OpenAIEmbeddingProvider(" ")
+
+    with pytest.raises(ValueError, match="model must not be empty"):
+        OpenAIEmbeddingProvider("test-key", model=" ")

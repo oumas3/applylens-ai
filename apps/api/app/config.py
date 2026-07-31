@@ -2,7 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -18,7 +18,10 @@ class Settings(BaseSettings):
     retrieval_chunk_max_chars: int = Field(default=1200, gt=0, le=10000)
     retrieval_chunk_overlap_chars: int = Field(default=100, ge=0, le=9999)
     retrieval_embedding_dimension: int = Field(default=32, gt=0, le=2048)
-    retrieval_provider: Literal["lexical", "hash"] = "lexical"
+    retrieval_provider: Literal["lexical", "hash", "openai"] = "lexical"
+    openai_api_key: SecretStr | None = None
+    openai_embedding_model: str = "text-embedding-3-small"
+    openai_base_url: str = "https://api.openai.com/v1"
 
     @model_validator(mode="after")
     def validate_retrieval_settings(self) -> "Settings":
@@ -26,6 +29,8 @@ class Settings(BaseSettings):
             raise ValueError(
                 "retrieval_chunk_overlap_chars must be smaller than retrieval_chunk_max_chars"
             )
+        if self.retrieval_provider == "openai" and self.openai_api_key is None:
+            raise ValueError("OPENAI_API_KEY is required when retrieval_provider is openai")
         return self
 
     model_config = SettingsConfigDict(

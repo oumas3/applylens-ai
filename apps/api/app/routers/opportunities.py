@@ -14,7 +14,10 @@ from typing import Literal
 from app.config import get_settings
 from app.routers.documents import UPLOAD_DIRECTORY, documents
 from app.services.document_service import DocumentExtractionError, DocumentService
-from app.services.embedding_service import HashEmbeddingProvider
+from app.services.embedding_service import (
+    HashEmbeddingProvider,
+    OpenAIEmbeddingProvider,
+)
 from app.services.retrieval_service import (
     EmbeddingRetriever,
     InMemoryRetriever,
@@ -482,7 +485,15 @@ def search_ingested_opportunity_evidence(
             max_chars=settings.retrieval_chunk_max_chars,
             overlap_chars=settings.retrieval_chunk_overlap_chars,
         )
-        if settings.retrieval_provider == "hash":
+        if settings.retrieval_provider == "openai":
+            retriever = EmbeddingRetriever(
+                OpenAIEmbeddingProvider(
+                    settings.openai_api_key.get_secret_value(),
+                    model=settings.openai_embedding_model,
+                    base_url=settings.openai_base_url,
+                )
+            )
+        elif settings.retrieval_provider == "hash":
             retriever = EmbeddingRetriever(
                 HashEmbeddingProvider(settings.retrieval_embedding_dimension)
             )

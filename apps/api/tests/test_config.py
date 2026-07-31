@@ -28,6 +28,21 @@ def test_retrieval_provider_accepts_hash_mode() -> None:
     assert settings.retrieval_provider == "hash"
 
 
+def test_retrieval_provider_accepts_openai_with_api_key() -> None:
+    settings = Settings(
+        _env_file=None,
+        retrieval_provider="openai",
+        openai_api_key="test-key",
+    )
+
+    assert settings.retrieval_provider == "openai"
+
+
 def test_retrieval_provider_rejects_unknown_mode() -> None:
     with pytest.raises(ValidationError):
         Settings(_env_file=None, retrieval_provider="unknown")
+
+
+def test_openai_retrieval_requires_api_key() -> None:
+    with pytest.raises(ValidationError, match="OPENAI_API_KEY is required"):
+        Settings(_env_file=None, retrieval_provider="openai")
