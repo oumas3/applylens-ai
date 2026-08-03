@@ -4,7 +4,7 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 
 ## Current verification
 
-- Backend test suite: 84 passing tests
+- Backend test suite: 85 passing tests
 - Frontend production build: passing
 
 

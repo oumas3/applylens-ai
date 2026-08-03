@@ -545,6 +545,73 @@ def test_analyse_ingested_opportunity_reuses_deadline_and_funding() -> None:
     assert payload["funding_status"] == "unavailable"
 
 
+def test_end_to_end_application_review_workflow() -> None:
+    document_response = client.post(
+        "/api/v1/documents",
+        files={"file": ("profile.txt", b"Bachelor's degree completed", "text/plain")},
+    )
+    document_id = document_response.json()["id"]
+
+    opportunity_response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={
+            "title": "MSc Data Science",
+            "source_text": (
+                "Applicants must hold a bachelor's degree.\n"
+                "English proficiency required.\n"
+                "Application deadline: 15 September 2026.\n"
+                "Funding: Scholarship available."
+            ),
+        },
+    )
+    opportunity_id = opportunity_response.json()["id"]
+
+    evidence_response = client.post(
+        f"/api/v1/opportunities/ingested/{opportunity_id}/evidence-search",
+        json={"query": "English proficiency"},
+    )
+    assert evidence_response.status_code == 200
+    assert evidence_response.json()
+
+    analysis_response = client.post(
+        f"/api/v1/opportunities/ingested/{opportunity_id}/analyse",
+        json={"document_ids": [document_id]},
+    )
+    assert analysis_response.status_code == 200
+    analysis = analysis_response.json()
+    assert analysis["eligibility"] == "Action required"
+    assert analysis["deadline_date"] == "2026-09-15"
+    assert analysis["funding_status"] == "available"
+
+    task_response = client.post(
+        "/api/v1/tasks/generate",
+        json={
+            "opportunity_id": opportunity_id,
+            "missing_requirements": analysis["missing_requirements"],
+        },
+    )
+    assert task_response.status_code == 200
+    assert task_response.json()[0]["opportunity_id"] == opportunity_id
+
+    first_review = {
+        "id": 201,
+        "title": analysis["title"],
+        "eligibility": analysis["eligibility"],
+        "matched_requirements": analysis["matched_requirements"],
+        "missing_requirements": analysis["missing_requirements"],
+    }
+    second_review = {**first_review, "id": 202, "eligibility": "Eligible"}
+    assert client.post("/api/v1/reviews", json=first_review).status_code == 201
+    assert client.post("/api/v1/reviews", json=second_review).status_code == 201
+
+    comparison_response = client.post(
+        "/api/v1/reviews/compare",
+        json={"review_ids": [201, 202]},
+    )
+    assert comparison_response.status_code == 200
+    assert comparison_response.json()["recommended_review_id"] == 202
+
+
 def test_analyse_ingested_opportunity_reuses_parsed_requirements() -> None:
     ingest_response = client.post(
         "/api/v1/opportunities/ingest",
