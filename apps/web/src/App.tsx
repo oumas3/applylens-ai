@@ -128,9 +128,9 @@ export default function App() {
   const [analysisEvidence, setAnalysisEvidence] = useState(
     "Bachelor's degree completed\nPublished two papers"
   )
-  const [analysisDeadline, setAnalysisDeadline] = useState('24 July 2026')
-  const [analysisDeadlineDate, setAnalysisDeadlineDate] = useState('2026-07-24')
-  const [analysisFunding, setAnalysisFunding] = useState('Scholarship available')
+  const [analysisDeadline, setAnalysisDeadline] = useState('')
+  const [analysisDeadlineDate, setAnalysisDeadlineDate] = useState('')
+  const [analysisFunding, setAnalysisFunding] = useState('')
   const [analysisLoading, setAnalysisLoading] = useState(false)
   const [analysisStatus, setAnalysisStatus] = useState(
     'Add an opportunity title, requirements, and evidence to review it.'
