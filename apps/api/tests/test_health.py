@@ -139,7 +139,9 @@ def test_readiness_reports_pgvector_failure(monkeypatch: pytest.MonkeyPatch) -> 
 def test_product_scope() -> None:
     response = client.get("/api/v1/product")
     assert response.status_code == 200
-    assert response.json()["supported_opportunities"] == ["Master's", "PhD"]
+    payload = response.json()
+    assert payload["supported_opportunities"] == ["Master's", "PhD"]
+    assert payload["phase"] == "Sprint 5 — Production hardening"
 
 
 def test_upload_document_accepts_valid_pdf() -> None:

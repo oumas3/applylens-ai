@@ -2,6 +2,11 @@
 
 ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisions, comparisons, and application checklists.
 
+## Current verification
+
+- Backend test suite: 81 passing tests
+- Frontend production build: passing
+
 
 ## Project status
 
@@ -23,7 +28,6 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 - Document listing and deletion
 - Document metadata persists across API restarts
 - Frontend upload, document list, and text-preview interface
-- 15 passing backend tests
 - Successful production frontend build
 
 ### Sprint 2 — Opportunity analysis
@@ -34,7 +38,14 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 - Surface application tasks, fees, and funding considerations
 - Add structured opportunity review flows in the UI
 
-### Sprint 4 â€” Evidence retrieval foundation
+### Sprint 3 — Review and task tracking
+
+- Save opportunity reviews for later comparison
+- Compare saved opportunities and recommend the strongest match
+- Generate application tasks from missing requirements, deadlines, and funding
+- Track task progress through pending, in-progress, and completed states
+
+### Sprint 4 — Evidence retrieval foundation
 
 - Split opportunity source text into traceable chunks with stable IDs
 - Support configurable chunk overlap while preserving source metadata
@@ -42,6 +53,14 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 - Include a deterministic local hash embedding provider for development and tests
 - Search ingested opportunity evidence from the API and web interface
 - Send selected search results into the eligibility analysis evidence field
+
+### Sprint 5 — Production hardening
+
+- Persist document metadata across API restarts
+- Enforce bounded upload sizes for documents and opportunity files
+- Provide dependency readiness checks for deployment health probes
+- Support optional OpenAI embeddings and PostgreSQL/pgvector storage
+- Provide a Docker Compose pgvector development environment
 
 The default retrieval implementation remains local and deterministic, so the MVP
 works without external services. Production deployments can opt into OpenAI

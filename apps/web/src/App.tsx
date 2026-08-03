@@ -1326,7 +1326,7 @@ async function handlePreviewText(
       </section>
 
       <footer className="page-footer">
-        Built by Oumaima Ouayres • Sprint 2 • Master's and PhD MVP
+        Built by Oumaima Ouayres • Sprint 5 • Master's and PhD MVP
       </footer>
     </main>
   )
