@@ -42,9 +42,9 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 - Search ingested opportunity evidence from the API and web interface
 - Send selected search results into the eligibility analysis evidence field
 
-The current retrieval implementation is intentionally local and deterministic. A
-production embedding provider and vector database are future extensions, not
-required for the current MVP.
+The default retrieval implementation remains local and deterministic, so the MVP
+works without external services. Production deployments can opt into OpenAI
+embeddings and PostgreSQL/pgvector using the configuration below.
 
 ### Production vector storage preparation
 
@@ -57,6 +57,28 @@ continues to work without that database.
 To activate persistent retrieval in a deployment, set `RETRIEVAL_PROVIDER=openai`,
 `RETRIEVAL_STORAGE=pgvector`, `OPENAI_API_KEY`, and `DATABASE_URL`, then apply
 the migration before starting the API.
+
+### Local pgvector development
+
+Docker is the quickest way to run the same vector database locally:
+
+```bash
+docker compose up -d postgres
+```
+
+The compose service runs PostgreSQL 16 with pgvector and automatically applies
+`apps/api/migrations/001_pgvector.sql` when its data volume is initialized. Add
+the following to the repository `.env` (never commit that file):
+
+```dotenv
+RETRIEVAL_PROVIDER=openai
+RETRIEVAL_STORAGE=pgvector
+DATABASE_URL=postgresql://applylens:applylens@localhost:5432/applylens
+OPENAI_API_KEY=your_key_here
+```
+
+If the volume already exists, apply a changed migration manually or recreate
+the development volume with `docker compose down -v`.
 ## Local setup
 
 ### Web

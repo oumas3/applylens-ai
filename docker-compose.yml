@@ -1,0 +1,21 @@
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: applylens
+      POSTGRES_USER: applylens
+      POSTGRES_PASSWORD: applylens
+    ports:
+      - "5432:5432"
+    volumes:
+      - applylens-postgres:/var/lib/postgresql/data
+      - ./apps/api/migrations/001_pgvector.sql:/docker-entrypoint-initdb.d/001_pgvector.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U applylens -d applylens"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  applylens-postgres:
