@@ -162,6 +162,16 @@ def test_upload_document_rejects_empty_files() -> None:
     assert response.json()["detail"] == "The uploaded file is empty."
 
 
+def test_upload_document_rejects_files_over_10_mb() -> None:
+    response = client.post(
+        "/api/v1/documents",
+        files={"file": ("large.txt", b"x" * (10 * 1024 * 1024 + 1), "text/plain")},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "The file must not exceed 10 MB."
+
+
 def test_upload_document_rejects_path_traversal_filenames() -> None:
     response = client.post(
         "/api/v1/documents",
@@ -400,6 +410,17 @@ def test_ingest_opportunity_file_rejects_unsupported_type() -> None:
     )
 
     assert response.status_code == 415
+
+
+def test_ingest_opportunity_file_rejects_files_over_10_mb() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingest-file",
+        data={"title": "PhD in AI"},
+        files={"file": ("large.txt", b"x" * (10 * 1024 * 1024 + 1), "text/plain")},
+    )
+
+    assert response.status_code == 413
+    assert response.json()["detail"] == "The file must not exceed 10 MB."
 
 
 def test_ingest_opportunity_extracts_requirement_lines() -> None:

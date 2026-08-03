@@ -12,7 +12,7 @@ from pypdf.errors import PdfReadError
 from typing import Literal
 
 from app.config import get_settings
-from app.routers.documents import UPLOAD_DIRECTORY, documents
+from app.routers.documents import UPLOAD_DIRECTORY, documents, read_upload_bytes
 from app.services.document_service import DocumentExtractionError, DocumentService
 from app.services.embedding_service import (
     HashEmbeddingProvider,
@@ -362,7 +362,7 @@ async def ingest_opportunity_file(
             detail="Only PDF and TXT opportunity files are accepted.",
         )
 
-    file_bytes = await file.read()
+    file_bytes = await read_upload_bytes(file)
     await file.close()
 
     if not file_bytes:

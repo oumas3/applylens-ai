@@ -19,6 +19,7 @@ router = APIRouter(
 )
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
+UPLOAD_READ_CHUNK_SIZE = 1024 * 1024  # 1 MB
 
 UPLOAD_DIRECTORY = (
     Path(__file__).resolve().parents[2]
@@ -59,6 +60,24 @@ class DocumentUploadRequest(BaseModel):
 
 
 documents: dict[str, DocumentMetadata] = {}
+
+
+async def read_upload_bytes(file: UploadFile, *, max_size: int = MAX_FILE_SIZE) -> bytes:
+    """Read an upload in bounded chunks and reject oversized payloads early."""
+    chunks: list[bytes] = []
+    size = 0
+
+    while chunk := await file.read(UPLOAD_READ_CHUNK_SIZE):
+        size += len(chunk)
+        if size > max_size:
+            await file.close()
+            raise HTTPException(
+                status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                detail="The file must not exceed 10 MB.",
+            )
+        chunks.append(chunk)
+
+    return b"".join(chunks)
 
 
 @router.post(
@@ -115,7 +134,7 @@ async def upload_document(
             detail="Only PDF and TXT documents are accepted.",
         )
 
-    file_bytes = await file.read()
+    file_bytes = await read_upload_bytes(file)
 
     if not file_bytes:
         raise HTTPException(
@@ -130,8 +149,6 @@ async def upload_document(
                 detail="The uploaded file is not a valid PDF.",
             )
 
-    await file.seek(0)
-
     document_id = str(uuid4())
     file_extension = Path(filename).suffix.lower()
     stored_filename = f"{document_id}{file_extension}"
@@ -142,12 +159,6 @@ async def upload_document(
         with destination.open("wb") as output:
             output.write(file_bytes)
             size_bytes = len(file_bytes)
-
-            if size_bytes > MAX_FILE_SIZE:
-                raise HTTPException(
-                    status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                    detail="The file must not exceed 10 MB.",
-                )
 
     except Exception:
         destination.unlink(missing_ok=True)
