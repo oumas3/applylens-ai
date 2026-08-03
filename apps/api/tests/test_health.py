@@ -499,6 +499,52 @@ def test_ingest_opportunity_extracts_requirement_lines() -> None:
     ]
 
 
+def test_ingest_opportunity_extracts_deadline_and_funding() -> None:
+    response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={
+            "title": "MSc Data Science",
+            "source_text": (
+                "Application deadline: 15 September 2026\n"
+                "Funding: Full scholarship and stipend available."
+            ),
+        },
+    )
+
+    assert response.status_code == 201
+    payload = response.json()
+    assert payload["deadline"] == "15 September 2026"
+    assert payload["deadline_date"] == "2026-09-15"
+    assert payload["funding"] == "Funding: Full scholarship and stipend available."
+
+
+def test_analyse_ingested_opportunity_reuses_deadline_and_funding() -> None:
+    ingest_response = client.post(
+        "/api/v1/opportunities/ingest",
+        json={
+            "title": "PhD in AI",
+            "source_text": (
+                "Applicants must hold a master's degree.\n"
+                "Deadline: 2026-10-01\n"
+                "No funding available."
+            ),
+        },
+    )
+    opportunity_id = ingest_response.json()["id"]
+
+    response = client.post(
+        f"/api/v1/opportunities/ingested/{opportunity_id}/analyse",
+        json={"evidence": ["Master's degree completed"]},
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["deadline"] == "2026-10-01"
+    assert payload["deadline_date"] == "2026-10-01"
+    assert payload["funding"] == "No funding available."
+    assert payload["funding_status"] == "unavailable"
+
+
 def test_analyse_ingested_opportunity_reuses_parsed_requirements() -> None:
     ingest_response = client.post(
         "/api/v1/opportunities/ingest",

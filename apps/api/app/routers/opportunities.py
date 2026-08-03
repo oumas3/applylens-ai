@@ -1,8 +1,9 @@
-from datetime import date
+from datetime import date, datetime
 import hashlib
 from io import BytesIO
 import json
 from pathlib import Path
+import re
 from uuid import uuid4
 
 from fastapi import APIRouter, Form, HTTPException, UploadFile, status
@@ -43,6 +44,9 @@ class OpportunityIngestRequest(BaseModel):
     degree_type: str | None = None
     source_name: str | None = None
     source_url: AnyHttpUrl | None = None
+    deadline: str | None = None
+    deadline_date: date | None = None
+    funding: str | None = None
 
 
 class RequirementCitation(BaseModel):
@@ -61,6 +65,9 @@ class OpportunityRecord(BaseModel):
     source_url: AnyHttpUrl | None = None
     requirements: list[str] = Field(default_factory=list)
     requirement_citations: list[RequirementCitation] = Field(default_factory=list)
+    deadline: str | None = None
+    deadline_date: date | None = None
+    funding: str | None = None
 
 
 class OpportunityIngestAnalysisRequest(BaseModel):
@@ -147,6 +154,64 @@ def _build_requirement_citations(
         )
         for requirement in requirements
     ]
+
+
+_DEADLINE_DATE_PATTERN = re.compile(
+    r"\b(?:"
+    r"\d{4}-\d{1,2}-\d{1,2}|"
+    r"\d{1,2}[/-]\d{1,2}[/-]\d{4}|"
+    r"\d{1,2}\s+(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|"
+    r"May|Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|"
+    r"Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?)\s+\d{4}|"
+    r"(?:Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|"
+    r"Jun(?:e)?|Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|"
+    r"Nov(?:ember)?|Dec(?:ember)?)\s+\d{1,2},?\s+\d{4}"
+    r")\b",
+    re.IGNORECASE,
+)
+
+
+def _parse_deadline_date(value: str) -> date | None:
+    normalized = re.sub(r"\s+", " ", value.strip().strip(".,;:"))
+    for pattern in ("%Y-%m-%d", "%d/%m/%Y", "%d-%m-%Y", "%d %B %Y", "%d %b %Y", "%B %d, %Y", "%B %d %Y", "%b %d, %Y", "%b %d %Y"):
+        try:
+            return datetime.strptime(normalized, pattern).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _extract_deadline(source_text: str) -> tuple[str | None, date | None]:
+    markers = ("deadline", "due date", "closing date", "applications close", "application closes")
+    for raw_line in source_text.splitlines():
+        line = raw_line.strip().lstrip("-* ")
+        normalized_line = line.lower()
+        if not line or not any(marker in normalized_line for marker in markers):
+            continue
+
+        date_match = _DEADLINE_DATE_PATTERN.search(line)
+        if date_match:
+            value = date_match.group(0)
+            return value, _parse_deadline_date(value)
+        return line, None
+    return None, None
+
+
+def _extract_funding(source_text: str) -> str | None:
+    funding_markers = (
+        "funding",
+        "scholarship",
+        "stipend",
+        "grant",
+        "tuition waiver",
+        "self-funded",
+        "unfunded",
+    )
+    for raw_line in source_text.splitlines():
+        line = raw_line.strip().lstrip("-* ")
+        if line and any(marker in line.lower() for marker in funding_markers):
+            return line
+    return None
 
 
 class OpportunityAnalysisRequest(BaseModel):
@@ -311,6 +376,7 @@ def _funding_status(funding: str | None) -> Literal["available", "unavailable", 
     status_code=status.HTTP_201_CREATED,
 )
 def ingest_opportunity(request: OpportunityIngestRequest) -> OpportunityRecord:
+    extracted_deadline, extracted_deadline_date = _extract_deadline(request.source_text)
     opportunity = OpportunityRecord(
         id=str(uuid4()),
         title=request.title,
@@ -324,6 +390,9 @@ def ingest_opportunity(request: OpportunityIngestRequest) -> OpportunityRecord:
             _extract_requirements(request.source_text),
             request.source_name,
         ),
+        deadline=request.deadline or extracted_deadline,
+        deadline_date=request.deadline_date or extracted_deadline_date,
+        funding=request.funding or _extract_funding(request.source_text),
     )
     ingested_opportunities.append(opportunity)
     _persist_opportunities()
@@ -545,6 +614,9 @@ def analyse_ingested_opportunity(
             evidence=request.evidence,
             document_ids=request.document_ids,
             application_url=opportunity.source_url,
+            deadline=opportunity.deadline,
+            deadline_date=opportunity.deadline_date,
+            funding=opportunity.funding,
         )
     )
     analysis.source_citations = opportunity.requirement_citations

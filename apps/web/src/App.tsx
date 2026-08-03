@@ -52,6 +52,9 @@ type IngestedOpportunity = {
   source_name?: string | null
   source_url?: string | null
   requirements: string[]
+  deadline?: string | null
+  deadline_date?: string | null
+  funding?: string | null
   requirement_citations: Array<{
     requirement: string
     source_name?: string | null
@@ -428,6 +431,9 @@ export default function App() {
     setAnalysisDegreeType(ingestedOpportunity.degree_type ?? '')
     setAnalysisRequirements(ingestedOpportunity.requirements.join('\n'))
     setAnalysisApplicationUrl(ingestedOpportunity.source_url ?? '')
+    setAnalysisDeadline(ingestedOpportunity.deadline ?? '')
+    setAnalysisDeadlineDate(ingestedOpportunity.deadline_date ?? '')
+    setAnalysisFunding(ingestedOpportunity.funding ?? '')
     setRetrievalResults([])
     setRetrievalQuery('')
     setRetrievalSearched(false)
@@ -446,6 +452,9 @@ export default function App() {
     setAnalysisDegreeType(opportunity.degree_type ?? '')
     setAnalysisRequirements(opportunity.requirements.join('\n'))
     setAnalysisApplicationUrl(opportunity.source_url ?? '')
+    setAnalysisDeadline(opportunity.deadline ?? '')
+    setAnalysisDeadlineDate(opportunity.deadline_date ?? '')
+    setAnalysisFunding(opportunity.funding ?? '')
     setRetrievalResults([])
     setRetrievalQuery('')
     setRetrievalSearched(false)
