@@ -30,7 +30,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./apps/api/storage:/app/storage
+      - ./apps/api/storage:/opt/applylens/apps/api/storage
     depends_on:
       postgres:
         condition: service_healthy
