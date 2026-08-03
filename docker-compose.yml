@@ -17,5 +17,40 @@ services:
       timeout: 5s
       retries: 10
 
+  api:
+    build:
+      context: ./apps/api
+    restart: unless-stopped
+    environment:
+      APP_ENV: development
+      WEB_ORIGIN: http://localhost:8080
+      DATABASE_URL: postgresql://applylens:applylens@postgres:5432/applylens
+      RETRIEVAL_PROVIDER: lexical
+      RETRIEVAL_STORAGE: memory
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./apps/api/storage:/app/storage
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        VITE_API_URL: http://localhost:8000
+    restart: unless-stopped
+    ports:
+      - "8080:80"
+    depends_on:
+      api:
+        condition: service_healthy
+
 volumes:
   applylens-postgres:

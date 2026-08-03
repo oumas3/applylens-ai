@@ -80,15 +80,20 @@ the migration before starting the API.
 
 ### Local pgvector development
 
-Docker is the quickest way to run the same vector database locally:
+Docker is the quickest way to run the complete application locally:
 
 ```bash
-docker compose up -d postgres
+docker compose up -d
 ```
 
-The compose service runs PostgreSQL 16 with pgvector and automatically applies
-`apps/api/migrations/001_pgvector.sql` when its data volume is initialized. Add
-the following to the repository `.env` (never commit that file):
+This starts PostgreSQL 16 with pgvector, the FastAPI service, and an Nginx-served
+production frontend. PostgreSQL automatically applies
+`apps/api/migrations/001_pgvector.sql` when its data volume is initialized. Open
+the web app at `http://localhost:8080` and the API at `http://localhost:8000`.
+
+The compose defaults use local lexical retrieval so no external API key is
+needed. To enable persistent OpenAI retrieval, override the API environment with
+the following values (never commit API keys):
 
 ```dotenv
 RETRIEVAL_PROVIDER=openai
