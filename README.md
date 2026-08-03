@@ -125,6 +125,8 @@ uvicorn app.main:app --reload
 ```
 
 Open the web app at `http://localhost:5173` and API documentation at `http://localhost:8000/docs`.
+For deployment probes, `/health` checks process liveness and `/health/ready`
+checks configured runtime dependencies.
 
 ## MVP boundary
 
