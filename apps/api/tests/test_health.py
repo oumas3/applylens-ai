@@ -2,7 +2,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.config import get_settings
+from app import main as main_module
+from app.config import Settings, get_settings
 from app.routers import documents as documents_router
 from app.routers import opportunities as opportunities_router
 from app.routers import reviews as reviews_router
@@ -97,6 +98,37 @@ def test_health() -> None:
     assert payload["service"] == "applylens-api"
     assert isinstance(payload["environment"], str)
     assert payload["environment"]
+
+
+def test_readiness_reports_local_retrieval_ready() -> None:
+    response = client.get("/health/ready")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "ready",
+        "service": "applylens-api",
+        "checks": {"api": "ok", "retrieval": "ok"},
+    }
+
+
+def test_readiness_reports_pgvector_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        main_module,
+        "settings",
+        Settings(
+            _env_file=None,
+            retrieval_provider="openai",
+            openai_api_key="test-key",
+            retrieval_storage="pgvector",
+            database_url="postgresql://127.0.0.1:1/applylens",
+        ),
+    )
+
+    response = client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json()["status"] == "not_ready"
+    assert response.json()["checks"]["pgvector"] == "error"
 
 
 def test_product_scope() -> None:

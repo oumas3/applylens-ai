@@ -1,6 +1,8 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from fastapi.responses import JSONResponse
+from typing import Literal
 from app.routers.documents import router as documents_router
 from app.routers.opportunities import router as opportunities_router
 from app.routers.tasks import router as tasks_router
@@ -13,6 +15,12 @@ class ProductInfo(BaseModel):
     phase: str
     supported_opportunities: list[str]
     promise: str
+
+
+class ReadinessResponse(BaseModel):
+    status: Literal["ready", "not_ready"]
+    service: str
+    checks: dict[str, str]
 
 
 settings = get_settings()
@@ -45,6 +53,38 @@ def health() -> dict[str, str]:
         "service": "applylens-api",
         "environment": settings.app_env,
     }
+
+
+@app.get("/health/ready", response_model=ReadinessResponse)
+def readiness() -> ReadinessResponse | JSONResponse:
+    """Report whether configured runtime dependencies can serve requests."""
+    checks = {"api": "ok"}
+
+    if settings.retrieval_storage == "pgvector":
+        try:
+            import psycopg
+
+            with psycopg.connect(settings.database_url, connect_timeout=3) as connection:
+                connection.execute("SELECT 1 FROM opportunity_chunks LIMIT 1")
+        except Exception:
+            checks["pgvector"] = "error"
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "not_ready",
+                    "service": "applylens-api",
+                    "checks": checks,
+                },
+            )
+        checks["pgvector"] = "ok"
+    else:
+        checks["retrieval"] = "ok"
+
+    return ReadinessResponse(
+        status="ready",
+        service="applylens-api",
+        checks=checks,
+    )
 
 
 @app.get("/api/v1/product", response_model=ProductInfo)
