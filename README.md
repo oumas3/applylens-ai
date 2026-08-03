@@ -21,6 +21,7 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 - Real multi-page PDF extraction with pypdf
 - Document metadata and extracted-text endpoints
 - Document listing and deletion
+- Document metadata persists across API restarts
 - Frontend upload, document list, and text-preview interface
 - 15 passing backend tests
 - Successful production frontend build

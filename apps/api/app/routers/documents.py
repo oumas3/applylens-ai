@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from dbm import error
+import json
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -28,6 +28,7 @@ UPLOAD_DIRECTORY = (
 )
 
 UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
+DOCUMENTS_FILE = Path(__file__).resolve().parents[2] / "storage" / "documents.json"
 
 
 DocumentCategory = Literal[
@@ -59,7 +60,33 @@ class DocumentUploadRequest(BaseModel):
     category: DocumentCategory = Field(default="OTHER")
 
 
-documents: dict[str, DocumentMetadata] = {}
+def _load_documents() -> dict[str, DocumentMetadata]:
+    if not DOCUMENTS_FILE.exists():
+        return {}
+
+    try:
+        payload = json.loads(DOCUMENTS_FILE.read_text(encoding="utf-8"))
+        loaded = [DocumentMetadata.model_validate(item) for item in payload]
+    except (OSError, json.JSONDecodeError, TypeError, ValueError):
+        return {}
+
+    return {document.id: document for document in loaded}
+
+
+def _persist_documents() -> None:
+    DOCUMENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    temporary_file = DOCUMENTS_FILE.with_suffix(".json.tmp")
+    temporary_file.write_text(
+        json.dumps(
+            [document.model_dump(mode="json") for document in documents.values()],
+            indent=2,
+        ),
+        encoding="utf-8",
+    )
+    temporary_file.replace(DOCUMENTS_FILE)
+
+
+documents: dict[str, DocumentMetadata] = _load_documents()
 
 
 async def read_upload_bytes(file: UploadFile, *, max_size: int = MAX_FILE_SIZE) -> bytes:
@@ -193,6 +220,7 @@ async def upload_document(
     )
 
     documents[document_id] = metadata
+    _persist_documents()
     return metadata
 
 
@@ -256,3 +284,4 @@ def delete_document(document_id: str) -> None:
     stored_file = UPLOAD_DIRECTORY / document.stored_filename
     if stored_file.exists():
         stored_file.unlink()
+    _persist_documents()

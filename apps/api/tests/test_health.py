@@ -23,6 +23,11 @@ def isolate_persistent_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Keep each test independent from local runtime JSON storage."""
     monkeypatch.setenv("RETRIEVAL_PROVIDER", "lexical")
     get_settings.cache_clear()
+    monkeypatch.setattr(
+        documents_router,
+        "DOCUMENTS_FILE",
+        tmp_path / "documents.json",
+    )
     monkeypatch.setattr(reviews_router, "REVIEWS_FILE", tmp_path / "reviews.json")
     monkeypatch.setattr(tasks_router, "TASKS_FILE", tmp_path / "tasks.json")
     monkeypatch.setattr(
@@ -219,6 +224,22 @@ def test_list_documents_returns_uploaded_metadata() -> None:
 
     assert response.status_code == 200
     assert isinstance(response.json(), list)
+
+
+def test_document_metadata_can_be_reloaded_from_persistent_storage() -> None:
+    upload_response = client.post(
+        "/api/v1/documents",
+        files={"file": ("notes.txt", b"persistent notes", "text/plain")},
+    )
+    document_id = upload_response.json()["id"]
+
+    documents_router.documents.clear()
+    documents_router.documents.update(documents_router._load_documents())
+
+    response = client.get(f"/api/v1/documents/{document_id}")
+
+    assert response.status_code == 200
+    assert response.json()["id"] == document_id
 
 
 def test_upload_document_extracts_text_from_txt_files() -> None:
