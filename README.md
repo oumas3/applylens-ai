@@ -4,7 +4,7 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 
 ## Current verification
 
-- Backend test suite: 81 passing tests
+- Backend test suite: 84 passing tests
 - Frontend production build: passing
 
 
@@ -32,7 +32,7 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 
 ### Sprint 2 — Opportunity analysis
 
-- Parse academic opportunity requirements and deadlines
+- Parse academic opportunity requirements, deadlines, and funding evidence
 - Compare candidate evidence against each requirement
 - Produce eligibility status with supporting evidence and gaps
 - Surface application tasks, fees, and funding considerations
