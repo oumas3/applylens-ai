@@ -17,6 +17,7 @@ class TaskItem(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     id: int
+    opportunity_id: str | None = None
     title: str
     status: Literal["pending", "in_progress", "completed"]
 
@@ -28,6 +29,7 @@ class TaskStatusUpdate(BaseModel):
 class TaskGenerationRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
+    opportunity_id: str | None = None
     missing_requirements: list[str] = Field(default_factory=list)
     deadline: str | None = None
     funding: str | None = None
@@ -85,12 +87,30 @@ def generate_tasks(request: TaskGenerationRequest) -> list[TaskItem]:
     if request.funding and request.funding.strip():
         task_titles.append("Review funding requirements and available support")
 
-    tasks = [
-        TaskItem(id=index, title=title, status="pending")
-        for index, title in enumerate(task_titles, start=1)
-    ]
+    generated_tasks: list[TaskItem] = []
+    next_id = max((task.id for task in tasks), default=0) + 1
+
+    if request.opportunity_id:
+        tasks[:] = [
+            task for task in tasks if task.opportunity_id != request.opportunity_id
+        ]
+    else:
+        next_id = 1
+        tasks.clear()
+
+    for offset, title in enumerate(task_titles):
+        generated_tasks.append(
+            TaskItem(
+                id=next_id + offset,
+                opportunity_id=request.opportunity_id,
+                title=title,
+                status="pending",
+            )
+        )
+
+    tasks.extend(generated_tasks)
     _persist_tasks()
-    return tasks
+    return tasks if request.opportunity_id is None else generated_tasks
 
 
 @router.patch(

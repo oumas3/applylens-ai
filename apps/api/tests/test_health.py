@@ -874,25 +874,55 @@ def test_generate_tasks_from_missing_requirements_and_opportunity_metadata() -> 
     assert response.json() == [
         {
             "id": 1,
+            "opportunity_id": None,
             "title": "Provide evidence for: English proficiency",
             "status": "pending",
         },
         {
             "id": 2,
+            "opportunity_id": None,
             "title": "Provide evidence for: Research proposal",
             "status": "pending",
         },
         {
             "id": 3,
+            "opportunity_id": None,
             "title": "Confirm application deadline: 24 July 2026",
             "status": "pending",
         },
         {
             "id": 4,
+            "opportunity_id": None,
             "title": "Review funding requirements and available support",
             "status": "pending",
         },
     ]
+
+
+def test_generate_tasks_keeps_different_opportunities_separate() -> None:
+    first = client.post(
+        "/api/v1/tasks/generate",
+        json={
+            "opportunity_id": "opportunity-a",
+            "missing_requirements": ["Research proposal"],
+        },
+    )
+    second = client.post(
+        "/api/v1/tasks/generate",
+        json={
+            "opportunity_id": "opportunity-b",
+            "missing_requirements": ["English proficiency"],
+        },
+    )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()[0]["opportunity_id"] == "opportunity-a"
+    assert second.json()[0]["opportunity_id"] == "opportunity-b"
+    assert first.json()[0]["id"] != second.json()[0]["id"]
+    assert {
+        task["opportunity_id"] for task in client.get("/api/v1/tasks").json()
+    } >= {"opportunity-a", "opportunity-b"}
 
 
 def test_update_task_status_changes_task_state() -> None:

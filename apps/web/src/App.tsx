@@ -72,6 +72,7 @@ type RetrievalResult = {
 
 type TaskItem = {
   id: number
+  opportunity_id?: string | null
   title: string
   status: string
 }
@@ -634,6 +635,7 @@ async function handlePreviewText(
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
+          opportunity_id: ingestedOpportunity?.id ?? null,
           missing_requirements: payload.missing_requirements,
           deadline: payload.deadline ?? null,
           funding: payload.funding ?? null,

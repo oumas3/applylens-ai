@@ -44,6 +44,7 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 - Compare saved opportunities and recommend the strongest match
 - Generate application tasks from missing requirements, deadlines, and funding
 - Track task progress through pending, in-progress, and completed states
+- Keep generated tasks scoped to their opportunity
 
 ### Sprint 4 — Evidence retrieval foundation
 
