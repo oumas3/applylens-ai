@@ -8,6 +8,7 @@ from app.routers import documents as documents_router
 from app.routers import opportunities as opportunities_router
 from app.routers import reviews as reviews_router
 from app.routers import tasks as tasks_router
+from app.routers.auth import get_current_user
 
 from io import BytesIO
 
@@ -22,6 +23,11 @@ client = TestClient(app)
 def isolate_persistent_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Keep each test independent from local runtime JSON storage."""
     monkeypatch.setenv("RETRIEVAL_PROVIDER", "lexical")
+    monkeypatch.setitem(
+        app.dependency_overrides,
+        get_current_user,
+        lambda: {"id": "test-user", "email": "test@example.com", "is_active": True},
+    )
     get_settings.cache_clear()
     monkeypatch.setattr(
         documents_router,
@@ -38,7 +44,8 @@ def isolate_persistent_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
 
     reviews_router.reviews[:] = []
     tasks_router.tasks[:] = [
-        task.model_copy() for task in tasks_router.DEFAULT_TASKS
+        task.model_copy(update={"user_id": "test-user"})
+        for task in tasks_router.DEFAULT_TASKS
     ]
     documents_router.documents.clear()
     opportunities_router.ingested_opportunities.clear()
@@ -985,27 +992,31 @@ def test_generate_tasks_from_missing_requirements_and_opportunity_metadata() -> 
 
     assert response.status_code == 200
     assert response.json() == [
-        {
-            "id": 1,
-            "opportunity_id": None,
+            {
+                "id": 1,
+                "user_id": "test-user",
+                "opportunity_id": None,
             "title": "Provide evidence for: English proficiency",
             "status": "pending",
         },
-        {
-            "id": 2,
-            "opportunity_id": None,
+            {
+                "id": 2,
+                "user_id": "test-user",
+                "opportunity_id": None,
             "title": "Provide evidence for: Research proposal",
             "status": "pending",
         },
-        {
-            "id": 3,
-            "opportunity_id": None,
+            {
+                "id": 3,
+                "user_id": "test-user",
+                "opportunity_id": None,
             "title": "Confirm application deadline: 24 July 2026",
             "status": "pending",
         },
-        {
-            "id": 4,
-            "opportunity_id": None,
+            {
+                "id": 4,
+                "user_id": "test-user",
+                "opportunity_id": None,
             "title": "Review funding requirements and available support",
             "status": "pending",
         },
@@ -1076,6 +1087,7 @@ def test_save_review_persists_review_for_future_reads() -> None:
         "deadline": "24 July 2026",
         "funding": "Scholarship available",
     }
+    review["user_id"] = "test-user"
 
     save_response = client.post("/api/v1/reviews", json=review)
     list_response = client.get("/api/v1/reviews")

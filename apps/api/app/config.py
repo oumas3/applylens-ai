@@ -15,6 +15,7 @@ class Settings(BaseSettings):
     api_port: int = 8000
     web_origin: str = "http://localhost:5173"
     database_url: str | None = None
+    auth_database_path: Path = ROOT_DIR / "apps" / "api" / "storage" / "auth.db"
     retrieval_chunk_max_chars: int = Field(default=1200, gt=0, le=10000)
     retrieval_chunk_overlap_chars: int = Field(default=100, ge=0, le=9999)
     retrieval_embedding_dimension: int = Field(default=32, gt=0, le=2048)

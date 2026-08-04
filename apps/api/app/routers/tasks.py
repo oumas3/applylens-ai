@@ -2,12 +2,14 @@ import json
 from pathlib import Path
 from typing import Literal
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
+from app.routers.auth import get_current_user
 
 router = APIRouter(
     prefix="/api/v1/tasks",
     tags=["tasks"],
+    dependencies=[Depends(get_current_user)],
 )
 
 TASKS_FILE = Path(__file__).resolve().parents[2] / "storage" / "tasks.json"
@@ -17,6 +19,7 @@ class TaskItem(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     id: int
+    user_id: str | None = None
     opportunity_id: str | None = None
     title: str
     status: Literal["pending", "in_progress", "completed"]
@@ -63,8 +66,8 @@ tasks = _load_tasks()
 
 
 @router.get("", response_model=list[TaskItem], status_code=status.HTTP_200_OK)
-def list_tasks() -> list[TaskItem]:
-    return tasks
+def list_tasks(user: dict[str, str | bool] = Depends(get_current_user)) -> list[TaskItem]:
+    return [task for task in tasks if task.user_id == user["id"]]
 
 
 @router.post(
@@ -72,7 +75,10 @@ def list_tasks() -> list[TaskItem]:
     response_model=list[TaskItem],
     status_code=status.HTTP_200_OK,
 )
-def generate_tasks(request: TaskGenerationRequest) -> list[TaskItem]:
+def generate_tasks(
+    request: TaskGenerationRequest,
+    user: dict[str, str | bool] = Depends(get_current_user),
+) -> list[TaskItem]:
     global tasks
 
     task_titles = [
@@ -88,20 +94,23 @@ def generate_tasks(request: TaskGenerationRequest) -> list[TaskItem]:
         task_titles.append("Review funding requirements and available support")
 
     generated_tasks: list[TaskItem] = []
-    next_id = max((task.id for task in tasks), default=0) + 1
+    owned_tasks = [task for task in tasks if task.user_id == user["id"]]
+    next_id = max((task.id for task in owned_tasks), default=0) + 1
 
     if request.opportunity_id:
         tasks[:] = [
-            task for task in tasks if task.opportunity_id != request.opportunity_id
+            task for task in tasks
+            if not (task.user_id == user["id"] and task.opportunity_id == request.opportunity_id)
         ]
     else:
         next_id = 1
-        tasks.clear()
+        tasks[:] = [task for task in tasks if task.user_id != user["id"]]
 
     for offset, title in enumerate(task_titles):
         generated_tasks.append(
             TaskItem(
                 id=next_id + offset,
+                user_id=str(user["id"]),
                 opportunity_id=request.opportunity_id,
                 title=title,
                 status="pending",
@@ -110,7 +119,7 @@ def generate_tasks(request: TaskGenerationRequest) -> list[TaskItem]:
 
     tasks.extend(generated_tasks)
     _persist_tasks()
-    return tasks if request.opportunity_id is None else generated_tasks
+    return [task for task in tasks if task.user_id == user["id"]] if request.opportunity_id is None else generated_tasks
 
 
 @router.patch(
@@ -118,9 +127,13 @@ def generate_tasks(request: TaskGenerationRequest) -> list[TaskItem]:
     response_model=TaskItem,
     status_code=status.HTTP_200_OK,
 )
-def update_task_status(task_id: int, update: TaskStatusUpdate) -> TaskItem:
+def update_task_status(
+    task_id: int,
+    update: TaskStatusUpdate,
+    user: dict[str, str | bool] = Depends(get_current_user),
+) -> TaskItem:
     for index, task in enumerate(tasks):
-        if task.id == task_id:
+        if task.id == task_id and task.user_id == user["id"]:
             updated_task = task.model_copy(update={"status": update.status})
             tasks[index] = updated_task
             _persist_tasks()

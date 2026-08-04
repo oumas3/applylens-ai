@@ -7,6 +7,7 @@ from app.routers.documents import router as documents_router
 from app.routers.opportunities import router as opportunities_router
 from app.routers.tasks import router as tasks_router
 from app.routers.reviews import router as reviews_router
+from app.routers.auth import router as auth_router
 from app.config import get_settings
 
 
@@ -45,6 +46,7 @@ app.include_router(documents_router)
 app.include_router(opportunities_router)
 app.include_router(tasks_router)
 app.include_router(reviews_router)
+app.include_router(auth_router)
 
 @app.get("/health")
 def health() -> dict[str, str]:

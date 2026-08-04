@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Literal
 from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -12,10 +12,12 @@ from app.services.document_service import (
     DocumentExtractionError,
     DocumentService,
 )
+from app.routers.auth import get_current_user
 
 router = APIRouter(
     prefix="/api/v1/documents",
     tags=["documents"],
+    dependencies=[Depends(get_current_user)],
 )
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
@@ -44,6 +46,7 @@ class DocumentMetadata(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     id: str
+    user_id: str | None = None
     original_filename: str = Field(..., min_length=1)
     stored_filename: str
     category: DocumentCategory
@@ -115,6 +118,7 @@ async def read_upload_bytes(file: UploadFile, *, max_size: int = MAX_FILE_SIZE) 
 async def upload_document(
     file: UploadFile,
     category: str | None = None,
+    user: dict[str, str | bool] = Depends(get_current_user),
 ) -> DocumentMetadata:
     filename = file.filename or "document.pdf"
     category_value = category or "OTHER"
@@ -209,6 +213,7 @@ async def upload_document(
 
     metadata = DocumentMetadata(
         id=document_id,
+        user_id=str(user["id"]),
         original_filename=filename,
         stored_filename=stored_filename,
         category=category_value,
@@ -228,18 +233,18 @@ async def upload_document(
     "",
     response_model=list[DocumentMetadata],
 )
-def list_documents() -> list[DocumentMetadata]:
-    return list(documents.values())
+def list_documents(user: dict[str, str | bool] = Depends(get_current_user)) -> list[DocumentMetadata]:
+    return [document for document in documents.values() if document.user_id == user["id"]]
 
 
 @router.get(
     "/{document_id}",
     response_model=DocumentMetadata,
 )
-def get_document(document_id: str) -> DocumentMetadata:
+def get_document(document_id: str, user: dict[str, str | bool] = Depends(get_current_user)) -> DocumentMetadata:
     document = documents.get(document_id)
 
-    if document is None:
+    if document is None or document.user_id != user["id"]:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found.",
@@ -252,10 +257,10 @@ def get_document(document_id: str) -> DocumentMetadata:
     "/{document_id}/text",
     response_class=PlainTextResponse,
 )
-def get_document_text(document_id: str) -> str:
+def get_document_text(document_id: str, user: dict[str, str | bool] = Depends(get_current_user)) -> str:
     document = documents.get(document_id)
 
-    if document is None:
+    if document is None or document.user_id != user["id"]:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found.",
@@ -272,15 +277,16 @@ def get_document_text(document_id: str) -> str:
     "/{document_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-def delete_document(document_id: str) -> None:
-    document = documents.pop(document_id, None)
+def delete_document(document_id: str, user: dict[str, str | bool] = Depends(get_current_user)) -> None:
+    document = documents.get(document_id)
 
-    if document is None:
+    if document is None or document.user_id != user["id"]:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found.",
         )
 
+    documents.pop(document_id)
     stored_file = UPLOAD_DIRECTORY / document.stored_filename
     if stored_file.exists():
         stored_file.unlink()

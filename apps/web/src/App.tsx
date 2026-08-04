@@ -3,6 +3,15 @@ import { useEffect, useState, type FormEvent } from 'react'
 const API_URL =
   import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'
 
+const apiFetch = (input: RequestInfo | URL, init: RequestInit = {}) =>
+  fetch(input, { ...init, credentials: 'include' })
+
+type AuthUser = {
+  id: string
+  email: string
+  is_active: boolean
+}
+
 type AnalysisResult = {
   title: string
   institution?: string | null
@@ -81,6 +90,12 @@ type ReviewComparison = {
 }
 
 export default function App() {
+  const [authUser, setAuthUser] = useState<AuthUser | null>(null)
+  const [authLoading, setAuthLoading] = useState(true)
+  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
+  const [authEmail, setAuthEmail] = useState('')
+  const [authPassword, setAuthPassword] = useState('')
+  const [authStatus, setAuthStatus] = useState('Sign in to access your private workspace.')
   const [apiStatus, setApiStatus] = useState('CONNECTING TO API...')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -150,11 +165,46 @@ export default function App() {
   const [comparisonLoading, setComparisonLoading] = useState(false)
 
   useEffect(() => {
+    apiFetch(`${API_URL}/api/v1/auth/me`)
+      .then(async (response) => {
+        if (!response.ok) return
+        setAuthUser(await response.json())
+      })
+      .catch(() => undefined)
+      .finally(() => setAuthLoading(false))
+  }, [])
+
+  async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setAuthStatus(authMode === 'login' ? 'Signing in...' : 'Creating your account...')
+    try {
+      const response = await apiFetch(`${API_URL}/api/v1/auth/${authMode}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: authEmail, password: authPassword }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.detail ?? 'Unable to authenticate.')
+      setAuthUser(payload)
+      setAuthPassword('')
+      setAuthStatus('')
+    } catch (error) {
+      setAuthStatus(error instanceof Error ? error.message : 'Unable to authenticate.')
+    }
+  }
+
+  async function handleLogout() {
+    await apiFetch(`${API_URL}/api/v1/auth/logout`, { method: 'POST' })
+    setAuthUser(null)
+    setAuthStatus('You have been signed out.')
+  }
+
+  useEffect(() => {
     const controller = new AbortController()
 
     async function checkApi() {
       try {
-        const response = await fetch(`${API_URL}/health`, {
+        const response = await apiFetch(`${API_URL}/health`, {
           signal: controller.signal,
         })
 
@@ -179,7 +229,7 @@ export default function App() {
     setDocumentsLoading(true)
 
     try {
-      const response = await fetch(`${API_URL}/api/v1/documents`)
+      const response = await apiFetch(`${API_URL}/api/v1/documents`)
 
       if (!response.ok) {
         throw new Error('Unable to load documents.')
@@ -204,7 +254,7 @@ export default function App() {
     setTasksLoading(true)
 
     try {
-      const response = await fetch(`${API_URL}/api/v1/tasks`)
+      const response = await apiFetch(`${API_URL}/api/v1/tasks`)
 
       if (!response.ok) {
         throw new Error('Unable to load tasks.')
@@ -221,7 +271,7 @@ export default function App() {
 
   async function handleTaskStatusChange(taskId: number, status: string) {
     try {
-      const response = await fetch(`${API_URL}/api/v1/tasks/${taskId}`, {
+      const response = await apiFetch(`${API_URL}/api/v1/tasks/${taskId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ status }),
@@ -250,7 +300,7 @@ export default function App() {
     setReviewsLoading(true)
 
     try {
-      const response = await fetch(`${API_URL}/api/v1/reviews`)
+      const response = await apiFetch(`${API_URL}/api/v1/reviews`)
 
       if (!response.ok) {
         throw new Error('Unable to load reviews.')
@@ -272,7 +322,7 @@ export default function App() {
   async function loadIngestedOpportunities() {
     setIngestedOpportunitiesLoading(true)
     try {
-      const response = await fetch(`${API_URL}/api/v1/opportunities/ingested`)
+      const response = await apiFetch(`${API_URL}/api/v1/opportunities/ingested`)
       if (!response.ok) {
         throw new Error('Unable to load saved opportunities.')
       }
@@ -300,7 +350,7 @@ export default function App() {
 
     setComparisonLoading(true)
     try {
-      const response = await fetch(`${API_URL}/api/v1/reviews/compare`, {
+      const response = await apiFetch(`${API_URL}/api/v1/reviews/compare`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ review_ids: selectedReviewIds }),
@@ -336,7 +386,7 @@ export default function App() {
       const formData = new FormData()
       formData.append('file', selectedFile)
 
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/v1/documents?category=${encodeURIComponent(documentCategory)}`,
         {
           method: 'POST',
@@ -380,7 +430,7 @@ export default function App() {
       formData.append('file', opportunityFile)
       formData.append('title', opportunityTitle.trim())
 
-      const response = await fetch(`${API_URL}/api/v1/opportunities/ingest-file`, {
+      const response = await apiFetch(`${API_URL}/api/v1/opportunities/ingest-file`, {
         method: 'POST',
         body: formData,
       })
@@ -472,7 +522,7 @@ export default function App() {
 
   async function deleteSavedOpportunity(opportunityId: string) {
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/v1/opportunities/ingested/${opportunityId}`,
         { method: 'DELETE' }
       )
@@ -506,7 +556,7 @@ export default function App() {
 
     setRetrievalLoading(true)
     try {
-      const response = await fetch(
+      const response = await apiFetch(
         `${API_URL}/api/v1/opportunities/ingested/${ingestedOpportunity.id}/evidence-search`,
         {
           method: 'POST',
@@ -540,7 +590,7 @@ async function handlePreviewText(
   setPreviewText('')
 
   try {
-    const response = await fetch(
+    const response = await apiFetch(
       `${API_URL}/api/v1/documents/${documentId}/text`
     )
 
@@ -562,7 +612,7 @@ async function handlePreviewText(
 }
   async function handleDelete(documentId: string) {
     try {
-      const response = await fetch(`${API_URL}/api/v1/documents/${documentId}`, {
+      const response = await apiFetch(`${API_URL}/api/v1/documents/${documentId}`, {
         method: 'DELETE',
       })
 
@@ -595,7 +645,7 @@ async function handlePreviewText(
         .map((item) => item.trim())
         .filter(Boolean)
 
-      const response = await fetch(`${API_URL}/api/v1/opportunities/analyse`, {
+      const response = await apiFetch(`${API_URL}/api/v1/opportunities/analyse`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -625,7 +675,7 @@ async function handlePreviewText(
       setAnalysisResult(payload)
       setAnalysisStatus(`Review ready for ${payload.title}.`)
 
-      const tasksResponse = await fetch(`${API_URL}/api/v1/tasks/generate`, {
+      const tasksResponse = await apiFetch(`${API_URL}/api/v1/tasks/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -651,7 +701,7 @@ async function handlePreviewText(
         funding: payload.funding ?? null,
       }
 
-      await fetch(`${API_URL}/api/v1/reviews`, {
+      await apiFetch(`${API_URL}/api/v1/reviews`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(reviewPayload),
@@ -668,13 +718,47 @@ async function handlePreviewText(
     }
   }
 
+  if (authLoading) {
+    return <main className="auth-shell"><p className="upload-status">Loading your workspace...</p></main>
+  }
+
+  if (!authUser) {
+    return (
+      <main className="auth-shell">
+        <section className="decision-card auth-card">
+          <p className="eyebrow">APPLYLENS AI</p>
+          <h1>{authMode === 'login' ? 'Welcome back.' : 'Create your workspace.'}</h1>
+          <p className="lead">Your documents and opportunity reviews are private to your account.</p>
+          <form className="analysis-form" onSubmit={handleAuthSubmit}>
+            <label className="upload-field">
+              <span>Email</span>
+              <input type="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} required />
+            </label>
+            <label className="upload-field">
+              <span>Password</span>
+              <input type="password" minLength={8} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} required />
+            </label>
+            <button type="submit">{authMode === 'login' ? 'Sign in' : 'Create account'}</button>
+          </form>
+          <p className="analysis-status">{authStatus}</p>
+          <button className="ghost" type="button" onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}>
+            {authMode === 'login' ? 'Need an account? Register' : 'Already registered? Sign in'}
+          </button>
+        </section>
+      </main>
+    )
+  }
+
   return (
     <main>
       <nav>
         <strong>
           ApplyLens <span>AI</span>
         </strong>
-        <button className="ghost">View roadmap</button>
+        <div className="actions">
+          <span className="muted">{authUser.email}</span>
+          <button className="ghost" type="button" onClick={handleLogout}>Sign out</button>
+        </div>
       </nav>
 
       <section className="hero">

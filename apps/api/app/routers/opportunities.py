@@ -6,13 +6,14 @@ from pathlib import Path
 import re
 from uuid import uuid4
 
-from fastapi import APIRouter, Form, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
 from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
 from typing import Literal
 
 from app.config import get_settings
+from app.routers.auth import get_current_user
 from app.routers.documents import UPLOAD_DIRECTORY, documents, read_upload_bytes
 from app.services.document_service import DocumentExtractionError, DocumentService
 from app.services.embedding_service import (
@@ -30,6 +31,7 @@ from app.services.retrieval_service import (
 router = APIRouter(
     prefix="/api/v1/opportunities",
     tags=["opportunities"],
+    dependencies=[Depends(get_current_user)],
 )
 
 OPPORTUNITIES_FILE = Path(__file__).resolve().parents[2] / "storage" / "opportunities.json"
@@ -57,6 +59,7 @@ class RequirementCitation(BaseModel):
 
 class OpportunityRecord(BaseModel):
     id: str
+    user_id: str | None = None
     title: str
     source_text: str
     institution: str | None = None
@@ -329,13 +332,16 @@ def _negative_evidence(requirement: str, evidence_items: list[str]) -> list[str]
     ]
 
 
-def _document_evidence(document_ids: list[str]) -> list[str]:
+def _document_evidence(
+    document_ids: list[str],
+    user_id: str,
+) -> list[str]:
     extracted_text: list[str] = []
 
     for document_id in document_ids:
         document = documents.get(document_id)
 
-        if document is None:
+        if document is None or document.user_id != user_id:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Document not found: {document_id}",
@@ -375,10 +381,14 @@ def _funding_status(funding: str | None) -> Literal["available", "unavailable", 
     response_model=OpportunityRecord,
     status_code=status.HTTP_201_CREATED,
 )
-def ingest_opportunity(request: OpportunityIngestRequest) -> OpportunityRecord:
+def ingest_opportunity(
+    request: OpportunityIngestRequest,
+    user: dict[str, str | bool] = Depends(get_current_user),
+) -> OpportunityRecord:
     extracted_deadline, extracted_deadline_date = _extract_deadline(request.source_text)
     opportunity = OpportunityRecord(
         id=str(uuid4()),
+        user_id=str(user["id"]),
         title=request.title,
         source_text=request.source_text,
         institution=request.institution,
@@ -409,6 +419,7 @@ async def ingest_opportunity_file(
     title: str = Form(...),
     institution: str | None = Form(default=None),
     degree_type: str | None = Form(default=None),
+    user: dict[str, str | bool] = Depends(get_current_user),
 ) -> OpportunityRecord:
     normalized_title = title.strip()
     if not normalized_title:
@@ -458,7 +469,8 @@ async def ingest_opportunity_file(
             institution=institution,
             degree_type=degree_type,
             source_name=filename,
-        )
+        ),
+        user=user,
     )
 
     if normalized_content_type == "application/pdf":
@@ -492,17 +504,22 @@ async def ingest_opportunity_file(
     response_model=list[OpportunityRecord],
     status_code=status.HTTP_200_OK,
 )
-def list_ingested_opportunities() -> list[OpportunityRecord]:
-    return ingested_opportunities
+def list_ingested_opportunities(
+    user: dict[str, str | bool] = Depends(get_current_user),
+) -> list[OpportunityRecord]:
+    return [item for item in ingested_opportunities if item.user_id == user["id"]]
 
 
 @router.delete(
     "/ingested/{opportunity_id}",
     status_code=status.HTTP_204_NO_CONTENT,
 )
-def delete_ingested_opportunity(opportunity_id: str) -> None:
+def delete_ingested_opportunity(
+    opportunity_id: str,
+    user: dict[str, str | bool] = Depends(get_current_user),
+) -> None:
     for index, opportunity in enumerate(ingested_opportunities):
-        if opportunity.id == opportunity_id:
+        if opportunity.id == opportunity_id and opportunity.user_id == user["id"]:
             ingested_opportunities.pop(index)
             _retrieval_cache.pop(opportunity_id, None)
             _persist_opportunities()
@@ -522,9 +539,14 @@ def delete_ingested_opportunity(opportunity_id: str) -> None:
 def search_ingested_opportunity_evidence(
     opportunity_id: str,
     request: EvidenceSearchRequest,
+    user: dict[str, str | bool] = Depends(get_current_user),
 ) -> list[RetrievalResult]:
     opportunity = next(
-        (item for item in ingested_opportunities if item.id == opportunity_id),
+        (
+            item
+            for item in ingested_opportunities
+            if item.id == opportunity_id and item.user_id == user["id"]
+        ),
         None,
     )
     if opportunity is None:
@@ -589,12 +611,13 @@ def search_ingested_opportunity_evidence(
 def analyse_ingested_opportunity(
     opportunity_id: str,
     request: OpportunityIngestAnalysisRequest,
+    user: dict[str, str | bool] = Depends(get_current_user),
 ) -> OpportunityAnalysisResponse:
     opportunity = next(
         (
             item
             for item in ingested_opportunities
-            if item.id == opportunity_id
+            if item.id == opportunity_id and item.user_id == user["id"]
         ),
         None,
     )
@@ -617,7 +640,8 @@ def analyse_ingested_opportunity(
             deadline=opportunity.deadline,
             deadline_date=opportunity.deadline_date,
             funding=opportunity.funding,
-        )
+        ),
+        user=user,
     )
     analysis.source_citations = opportunity.requirement_citations
     return analysis
@@ -628,10 +652,13 @@ def analyse_ingested_opportunity(
     response_model=OpportunityAnalysisResponse,
     status_code=status.HTTP_200_OK,
 )
-def analyse_opportunity(request: OpportunityAnalysisRequest) -> OpportunityAnalysisResponse:
+def analyse_opportunity(
+    request: OpportunityAnalysisRequest,
+    user: dict[str, str | bool] = Depends(get_current_user),
+) -> OpportunityAnalysisResponse:
     normalized_requirements = [item.strip() for item in request.requirements if item and item.strip()]
     normalized_evidence = [item.strip() for item in request.evidence if item and item.strip()]
-    normalized_evidence.extend(_document_evidence(request.document_ids))
+    normalized_evidence.extend(_document_evidence(request.document_ids, str(user["id"])))
 
     matched_requirements = []
     missing_requirements = []

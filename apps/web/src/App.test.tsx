@@ -19,6 +19,9 @@ function responseFor(payload: unknown, status = 200): MockResponse {
 }
 
 function defaultFetchResponse(url: string, method: string): MockResponse {
+  if (url.endsWith('/api/v1/auth/me')) {
+    return responseFor({ id: 'test-user', email: 'test@example.com', is_active: true })
+  }
   if (url.endsWith('/health')) {
     return responseFor({ status: 'ok' })
   }
@@ -53,7 +56,9 @@ describe('ApplyLens UI', () => {
 
     render(<App />)
 
-    expect(screen.getByRole('heading', { name: /Know where you qualify/i })).toBeInTheDocument()
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Know where you qualify/i })).toBeInTheDocument()
+    )
     await waitFor(() => expect(screen.getByText(/API CONNECTED/)).toBeInTheDocument())
     expect(screen.getByText('No documents uploaded yet.')).toBeInTheDocument()
     expect(screen.getByText('No saved opportunities yet.')).toBeInTheDocument()

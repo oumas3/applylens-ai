@@ -1,8 +1,9 @@
 import json
 from pathlib import Path
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
+from app.routers.auth import get_current_user
 from typing import Literal
 
 REVIEWS_FILE = Path(__file__).resolve().parents[2] / "storage" / "reviews.json"
@@ -10,6 +11,7 @@ REVIEWS_FILE = Path(__file__).resolve().parents[2] / "storage" / "reviews.json"
 router = APIRouter(
     prefix="/api/v1/reviews",
     tags=["reviews"],
+    dependencies=[Depends(get_current_user)],
 )
 
 
@@ -17,6 +19,7 @@ class OpportunityReview(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     id: int
+    user_id: str | None = None
     title: str
     eligibility: Literal["Eligible", "Not eligible", "Unclear", "Action required"]
     matched_requirements: list[str] = Field(default_factory=list)
@@ -57,12 +60,16 @@ reviews: list[OpportunityReview] = _load_reviews()
 
 
 @router.get("", response_model=list[OpportunityReview], status_code=status.HTTP_200_OK)
-def list_reviews() -> list[OpportunityReview]:
-    return reviews
+def list_reviews(user: dict[str, str | bool] = Depends(get_current_user)) -> list[OpportunityReview]:
+    return [review for review in reviews if review.user_id == user["id"]]
 
 
 @router.post("", response_model=OpportunityReview, status_code=status.HTTP_201_CREATED)
-def save_review(review: OpportunityReview) -> OpportunityReview:
+def save_review(
+    review: OpportunityReview,
+    user: dict[str, str | bool] = Depends(get_current_user),
+) -> OpportunityReview:
+    review.user_id = str(user["id"])
     reviews.append(review)
     _persist_reviews()
     return review
@@ -73,8 +80,14 @@ def save_review(review: OpportunityReview) -> OpportunityReview:
     response_model=ReviewComparisonResponse,
     status_code=status.HTTP_200_OK,
 )
-def compare_reviews(request: ReviewComparisonRequest) -> ReviewComparisonResponse:
-    selected_reviews = [review for review in reviews if review.id in request.review_ids]
+def compare_reviews(
+    request: ReviewComparisonRequest,
+    user: dict[str, str | bool] = Depends(get_current_user),
+) -> ReviewComparisonResponse:
+    selected_reviews = [
+        review for review in reviews
+        if review.id in request.review_ids and review.user_id == user["id"]
+    ]
     missing_ids = set(request.review_ids) - {review.id for review in selected_reviews}
 
     if missing_ids:
