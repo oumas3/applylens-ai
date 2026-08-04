@@ -3,21 +3,6 @@ import { useEffect, useState, type FormEvent } from 'react'
 const API_URL =
   import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'
 
-const opportunities = [
-  {
-    type: "Master's",
-    title: 'Data Science & AI',
-    school: 'Example University',
-    status: 'Ready to analyse',
-  },
-  {
-    type: 'PhD',
-    title: 'Computer Science',
-    school: 'Sample Institute',
-    status: 'Profile needed',
-  },
-]
-
 type AnalysisResult = {
   title: string
   institution?: string | null
@@ -1308,11 +1293,15 @@ async function handlePreviewText(
 
         <div className="stats">
           <article>
-            <strong>2</strong>
+            <strong>{ingestedOpportunities.length}</strong>
             <span>Opportunities</span>
           </article>
           <article>
-            <strong>1</strong>
+            <strong>
+              {ingestedOpportunities.filter(
+                (opportunity) => opportunity.deadline || opportunity.deadline_date
+              ).length}
+            </strong>
             <span>Deadline tracked</span>
           </article>
           <article>
@@ -1322,14 +1311,26 @@ async function handlePreviewText(
         </div>
 
         <div className="grid">
-          {opportunities.map((opportunity) => (
-            <article className="opportunity" key={opportunity.title}>
-              <span className="tag">{opportunity.type}</span>
+          {ingestedOpportunities.length === 0 ? (
+            <p className="upload-status">
+              No saved opportunities yet. Extract an academic call above to start your workspace.
+            </p>
+          ) : ingestedOpportunities.map((opportunity) => (
+            <article className="opportunity" key={opportunity.id}>
+              <span className="tag">{opportunity.degree_type ?? 'Opportunity'}</span>
               <h3>{opportunity.title}</h3>
-              <p>{opportunity.school}</p>
+              <p>{opportunity.institution ?? 'Institution not provided'}</p>
               <footer>
-                <span>{opportunity.status}</span>
-                <button aria-label={`Open ${opportunity.title}`}>→</button>
+                <span>
+                  {ingestedOpportunity?.id === opportunity.id
+                    ? 'Selected'
+                    : 'Ready to analyse'}
+                </span>
+                <button
+                  type="button"
+                  aria-label={`Open ${opportunity.title}`}
+                  onClick={() => selectSavedOpportunity(opportunity)}
+                >→</button>
               </footer>
             </article>
           ))}
@@ -1337,7 +1338,7 @@ async function handlePreviewText(
       </section>
 
       <footer className="page-footer">
-        Built by Oumaima Ouayres • Sprint 5 • Master's and PhD MVP
+        Built by Oumaima Ouayres • Sprint 6 • Master's and PhD MVP
       </footer>
     </main>
   )
