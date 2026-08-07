@@ -4,8 +4,8 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 
 ## Current verification
 
-- Backend test suite: 85 passing tests
-- Frontend production build: passing
+- Backend test suite: 96 passing tests
+- Frontend tests and production build: passing
 
 
 ## Project status
@@ -63,13 +63,23 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 - Support optional OpenAI embeddings and PostgreSQL/pgvector storage
 - Provide a Docker Compose pgvector development environment
 
+### Sprint 8 — Production persistence
+
+- Persist authentication and application records in PostgreSQL when `DATABASE_URL` is configured.
+- Keep deterministic JSON/SQLite fallbacks for local development and tests.
+- Use atomic, path-safe file storage for uploaded document bytes.
+- Report database schema readiness through `/health/ready`.
+- Verify migration structure, storage integrity, and ownership boundaries with automated tests.
+
 The default retrieval implementation remains local and deterministic, so the MVP
 works without external services. Production deployments can opt into OpenAI
 embeddings and PostgreSQL/pgvector using the configuration below.
 
 ### Production vector storage preparation
 
-The first pgvector migration is at `apps/api/migrations/001_pgvector.sql`.
+The pgvector migration is at `apps/api/migrations/001_pgvector.sql`, and
+application/authentication tables are defined in
+`apps/api/migrations/002_application_data.sql`.
 It creates a persistent `opportunity_chunks` table for OpenAI
 `text-embedding-3-small` vectors and a cosine-similarity HNSW index. Applying
 it requires PostgreSQL with the `pgvector` extension installed; local retrieval
@@ -88,8 +98,8 @@ docker compose up -d
 ```
 
 This starts PostgreSQL 16 with pgvector, the FastAPI service, and an Nginx-served
-production frontend. PostgreSQL automatically applies
-`apps/api/migrations/001_pgvector.sql` when its data volume is initialized. Open
+production frontend. PostgreSQL automatically applies both migration files when
+its data volume is initialized. Open
 the web app at `http://localhost:8080` and the API at `http://localhost:8000`.
 
 The compose defaults use local lexical retrieval so no external API key is

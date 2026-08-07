@@ -2,6 +2,7 @@ from datetime import date, datetime
 import hashlib
 from io import BytesIO
 import json
+import logging
 from pathlib import Path
 import re
 from uuid import uuid4
@@ -14,8 +15,9 @@ from typing import Literal
 
 from app.config import get_settings
 from app.routers.auth import get_current_user
-from app.routers.documents import UPLOAD_DIRECTORY, documents, read_upload_bytes
+from app.routers.documents import documents, file_storage, read_upload_bytes
 from app.services.document_service import DocumentExtractionError, DocumentService
+from app.services.application_store import PostgresApplicationStore
 from app.services.embedding_service import (
     HashEmbeddingProvider,
     OpenAIEmbeddingProvider,
@@ -33,8 +35,15 @@ router = APIRouter(
     tags=["opportunities"],
     dependencies=[Depends(get_current_user)],
 )
+logger = logging.getLogger(__name__)
 
 OPPORTUNITIES_FILE = Path(__file__).resolve().parents[2] / "storage" / "opportunities.json"
+runtime_settings = get_settings()
+application_store = (
+    PostgresApplicationStore(runtime_settings.database_url)
+    if runtime_settings.database_url
+    else None
+)
 
 
 class OpportunityIngestRequest(BaseModel):
@@ -88,6 +97,16 @@ class EvidenceSearchRequest(BaseModel):
 
 
 def _load_opportunities() -> list[OpportunityRecord]:
+    if application_store is not None:
+        try:
+            return [
+                OpportunityRecord.model_validate(item)
+                for item in application_store.load_opportunities()
+            ]
+        except Exception:
+            logger.exception("Unable to load opportunities from PostgreSQL")
+            return []
+
     if not OPPORTUNITIES_FILE.exists():
         return []
 
@@ -98,7 +117,18 @@ def _load_opportunities() -> list[OpportunityRecord]:
         return []
 
 
-def _persist_opportunities() -> None:
+def _persist_opportunities(user_id: str | None = None) -> None:
+    if application_store is not None:
+        application_store.replace_opportunities(
+            (
+                opportunity.model_dump(mode="python")
+                for opportunity in ingested_opportunities
+                if user_id is None or opportunity.user_id == user_id
+            ),
+            user_id=user_id,
+        )
+        return
+
     OPPORTUNITIES_FILE.parent.mkdir(parents=True, exist_ok=True)
     OPPORTUNITIES_FILE.write_text(
         json.dumps(
@@ -350,7 +380,7 @@ def _document_evidence(
         try:
             text = DocumentService.extract_text(
                 document.content_type,
-                (UPLOAD_DIRECTORY / document.stored_filename).read_bytes(),
+                file_storage.read(document.stored_filename),
             )
         except (OSError, DocumentExtractionError) as error:
             raise HTTPException(
@@ -405,7 +435,7 @@ def ingest_opportunity(
         funding=request.funding or _extract_funding(request.source_text),
     )
     ingested_opportunities.append(opportunity)
-    _persist_opportunities()
+    _persist_opportunities(str(user["id"]))
     return opportunity
 
 
@@ -490,7 +520,7 @@ async def ingest_opportunity_file(
 
             if page_citations:
                 opportunity.requirement_citations = page_citations
-                _persist_opportunities()
+                _persist_opportunities(str(user["id"]))
         except PdfReadError:
             # DocumentService already validated the PDF; keep the general
             # source citation when page-level extraction is unavailable.
@@ -522,7 +552,7 @@ def delete_ingested_opportunity(
         if opportunity.id == opportunity_id and opportunity.user_id == user["id"]:
             ingested_opportunities.pop(index)
             _retrieval_cache.pop(opportunity_id, None)
-            _persist_opportunities()
+            _persist_opportunities(str(user["id"]))
             return
 
     raise HTTPException(

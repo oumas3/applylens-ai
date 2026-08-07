@@ -1,5 +1,6 @@
 from datetime import datetime, timezone
 import json
+import logging
 from pathlib import Path
 from typing import Literal
 from uuid import uuid4
@@ -8,10 +9,13 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
 from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.config import get_settings
 from app.services.document_service import (
     DocumentExtractionError,
     DocumentService,
 )
+from app.services.application_store import PostgresApplicationStore
+from app.services.file_storage import LocalFileStorage
 from app.routers.auth import get_current_user
 
 router = APIRouter(
@@ -19,6 +23,7 @@ router = APIRouter(
     tags=["documents"],
     dependencies=[Depends(get_current_user)],
 )
+logger = logging.getLogger(__name__)
 
 MAX_FILE_SIZE = 10 * 1024 * 1024  # 10 MB
 UPLOAD_READ_CHUNK_SIZE = 1024 * 1024  # 1 MB
@@ -30,7 +35,14 @@ UPLOAD_DIRECTORY = (
 )
 
 UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
+file_storage = LocalFileStorage(UPLOAD_DIRECTORY)
 DOCUMENTS_FILE = Path(__file__).resolve().parents[2] / "storage" / "documents.json"
+settings = get_settings()
+application_store = (
+    PostgresApplicationStore(settings.database_url)
+    if settings.database_url
+    else None
+)
 
 
 DocumentCategory = Literal[
@@ -64,6 +76,17 @@ class DocumentUploadRequest(BaseModel):
 
 
 def _load_documents() -> dict[str, DocumentMetadata]:
+    if application_store is not None:
+        try:
+            loaded = [
+                DocumentMetadata.model_validate(item)
+                for item in application_store.load_documents()
+            ]
+            return {document.id: document for document in loaded}
+        except Exception:
+            logger.exception("Unable to load document metadata from PostgreSQL")
+            return {}
+
     if not DOCUMENTS_FILE.exists():
         return {}
 
@@ -76,7 +99,18 @@ def _load_documents() -> dict[str, DocumentMetadata]:
     return {document.id: document for document in loaded}
 
 
-def _persist_documents() -> None:
+def _persist_documents(user_id: str | None = None) -> None:
+    if application_store is not None:
+        application_store.replace_documents(
+            (
+                document.model_dump(mode="python")
+                for document in documents.values()
+                if user_id is None or document.user_id == user_id
+            ),
+            user_id=user_id,
+        )
+        return
+
     DOCUMENTS_FILE.parent.mkdir(parents=True, exist_ok=True)
     temporary_file = DOCUMENTS_FILE.with_suffix(".json.tmp")
     temporary_file.write_text(
@@ -187,10 +221,8 @@ async def upload_document(
     size_bytes = 0
 
     try:
-        with destination.open("wb") as output:
-            output.write(file_bytes)
-            size_bytes = len(file_bytes)
-
+        stored_file = file_storage.save(stored_filename, file_bytes)
+        size_bytes = stored_file.size_bytes
     except Exception:
         destination.unlink(missing_ok=True)
         raise
@@ -225,7 +257,7 @@ async def upload_document(
     )
 
     documents[document_id] = metadata
-    _persist_documents()
+    _persist_documents(str(user["id"]))
     return metadata
 
 
@@ -268,7 +300,7 @@ def get_document_text(document_id: str, user: dict[str, str | bool] = Depends(ge
 
     extracted_text = DocumentService.extract_text(
         document.content_type,
-        (UPLOAD_DIRECTORY / document.stored_filename).read_bytes(),
+        file_storage.read(document.stored_filename),
     )
     return extracted_text
 
@@ -287,7 +319,5 @@ def delete_document(document_id: str, user: dict[str, str | bool] = Depends(get_
         )
 
     documents.pop(document_id)
-    stored_file = UPLOAD_DIRECTORY / document.stored_filename
-    if stored_file.exists():
-        stored_file.unlink()
-    _persist_documents()
+    file_storage.delete(document.stored_filename)
+    _persist_documents(str(user["id"]))

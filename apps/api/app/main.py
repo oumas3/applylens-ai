@@ -9,6 +9,7 @@ from app.routers.tasks import router as tasks_router
 from app.routers.reviews import router as reviews_router
 from app.routers.auth import router as auth_router
 from app.config import get_settings
+from app.services.application_store import PostgresApplicationStore
 
 
 class ProductInfo(BaseModel):
@@ -62,6 +63,23 @@ def readiness() -> ReadinessResponse | JSONResponse:
     """Report whether configured runtime dependencies can serve requests."""
     checks = {"api": "ok"}
 
+    if settings.database_url:
+        try:
+            PostgresApplicationStore(settings.database_url).check()
+        except Exception:
+            checks["database"] = "error"
+            return JSONResponse(
+                status_code=503,
+                content={
+                    "status": "not_ready",
+                    "service": "applylens-api",
+                    "checks": checks,
+                },
+            )
+        checks["database"] = "ok"
+    else:
+        checks["database"] = "fallback"
+
     if settings.retrieval_storage == "pgvector":
         try:
             import psycopg
@@ -93,7 +111,7 @@ def readiness() -> ReadinessResponse | JSONResponse:
 def product() -> ProductInfo:
     return ProductInfo(
         name="ApplyLens AI",
-        phase="Sprint 5 — Production hardening",
+        phase="Sprint 8 — Production persistence",
         supported_opportunities=["Master's", "PhD"],
         promise="Every decision is backed by evidence or marked unclear.",
     )

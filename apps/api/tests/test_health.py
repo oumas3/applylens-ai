@@ -119,7 +119,28 @@ def test_readiness_reports_local_retrieval_ready() -> None:
     assert response.json() == {
         "status": "ready",
         "service": "applylens-api",
-        "checks": {"api": "ok", "retrieval": "ok"},
+        "checks": {"api": "ok", "database": "fallback", "retrieval": "ok"},
+    }
+
+
+def test_readiness_reports_database_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        main_module,
+        "settings",
+        Settings(
+            _env_file=None,
+            retrieval_storage="memory",
+            database_url="postgresql://127.0.0.1:1/applylens",
+        ),
+    )
+
+    response = client.get("/health/ready")
+
+    assert response.status_code == 503
+    assert response.json() == {
+        "status": "not_ready",
+        "service": "applylens-api",
+        "checks": {"api": "ok", "database": "error"},
     }
 
 
@@ -140,7 +161,7 @@ def test_readiness_reports_pgvector_failure(monkeypatch: pytest.MonkeyPatch) -> 
 
     assert response.status_code == 503
     assert response.json()["status"] == "not_ready"
-    assert response.json()["checks"]["pgvector"] == "error"
+    assert response.json()["checks"]["database"] == "error"
 
 
 def test_product_scope() -> None:
@@ -148,7 +169,7 @@ def test_product_scope() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["supported_opportunities"] == ["Master's", "PhD"]
-    assert payload["phase"] == "Sprint 5 — Production hardening"
+    assert payload["phase"] == "Sprint 8 — Production persistence"
 
 
 def test_upload_document_accepts_valid_pdf() -> None:

@@ -1,18 +1,28 @@
 import json
+import logging
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from app.routers.auth import get_current_user
+from app.config import get_settings
+from app.services.application_store import PostgresApplicationStore
 from typing import Literal
 
 REVIEWS_FILE = Path(__file__).resolve().parents[2] / "storage" / "reviews.json"
+settings = get_settings()
+application_store = (
+    PostgresApplicationStore(settings.database_url)
+    if settings.database_url
+    else None
+)
 
 router = APIRouter(
     prefix="/api/v1/reviews",
     tags=["reviews"],
     dependencies=[Depends(get_current_user)],
 )
+logger = logging.getLogger(__name__)
 
 
 class OpportunityReview(BaseModel):
@@ -38,6 +48,16 @@ class ReviewComparisonResponse(BaseModel):
 
 
 def _load_reviews() -> list[OpportunityReview]:
+    if application_store is not None:
+        try:
+            return [
+                OpportunityReview.model_validate(item)
+                for item in application_store.load_reviews()
+            ]
+        except Exception:
+            logger.exception("Unable to load reviews from PostgreSQL")
+            return []
+
     if not REVIEWS_FILE.exists():
         return []
 
@@ -48,7 +68,18 @@ def _load_reviews() -> list[OpportunityReview]:
         return []
 
 
-def _persist_reviews() -> None:
+def _persist_reviews(user_id: str | None = None) -> None:
+    if application_store is not None:
+        application_store.replace_reviews(
+            (
+                review.model_dump(mode="python")
+                for review in reviews
+                if user_id is None or review.user_id == user_id
+            ),
+            user_id=user_id,
+        )
+        return
+
     REVIEWS_FILE.parent.mkdir(parents=True, exist_ok=True)
     REVIEWS_FILE.write_text(
         json.dumps([review.model_dump(mode="json") for review in reviews], indent=2),
@@ -71,7 +102,7 @@ def save_review(
 ) -> OpportunityReview:
     review.user_id = str(user["id"])
     reviews.append(review)
-    _persist_reviews()
+    _persist_reviews(str(user["id"]))
     return review
 
 

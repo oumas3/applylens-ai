@@ -25,7 +25,8 @@ class UserResponse(BaseModel):
 
 
 def get_auth_service() -> AuthService:
-    return AuthService(get_settings().auth_database_path)
+    settings = get_settings()
+    return AuthService(settings.auth_database_path, settings.database_url)
 
 
 def get_current_user(

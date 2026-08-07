@@ -144,3 +144,10 @@
   margin: 0;
   color: #5f687a;
 }
+
+/* Keep the hero copy aligned with the opportunity panel instead of vertically
+   centering it against the panel's much taller form. */
+.hero {
+  align-items: start;
+  padding-top: 36px;
+}

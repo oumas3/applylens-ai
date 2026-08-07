@@ -12,15 +12,25 @@ SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
 
 
 class AuthService:
-    def __init__(self, database_path: Path) -> None:
+    def __init__(self, database_path: Path, database_url: str | None = None) -> None:
         self.database_path = database_path
-        self.database_path.parent.mkdir(parents=True, exist_ok=True)
-        self._initialize()
+        self.database_url = database_url
+        if self.database_url is None:
+            self.database_path.parent.mkdir(parents=True, exist_ok=True)
+            self._initialize()
 
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
         return connection
+
+    def _postgres(self):
+        try:
+            import psycopg
+            from psycopg.rows import dict_row
+        except ImportError as error:
+            raise RuntimeError("psycopg is required for PostgreSQL authentication.") from error
+        return psycopg.connect(self.database_url, row_factory=dict_row)
 
     def _initialize(self) -> None:
         with self._connect() as connection:
@@ -69,21 +79,37 @@ class AuthService:
         user_id = secrets.token_urlsafe(16)
         now = datetime.now(timezone.utc).isoformat()
         try:
-            with self._connect() as connection:
-                connection.execute(
-                    "INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
-                    (user_id, email, self._hash_password(password), now),
-                )
-        except sqlite3.IntegrityError as error:
+            if self.database_url:
+                with self._postgres() as connection:
+                    connection.execute(
+                        "INSERT INTO users (id, email, password_hash, created_at) VALUES (%s, %s, %s, %s)",
+                        (user_id, email, self._hash_password(password), now),
+                    )
+            else:
+                with self._connect() as connection:
+                    connection.execute(
+                        "INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)",
+                        (user_id, email, self._hash_password(password), now),
+                    )
+        except Exception as error:
+            if not isinstance(error, sqlite3.IntegrityError) and "duplicate key" not in str(error).lower():
+                raise
             raise ValueError("An account with this email already exists.") from error
         return {"id": user_id, "email": email, "is_active": True}
 
     def authenticate(self, email: str, password: str) -> dict[str, str | bool] | None:
-        with self._connect() as connection:
-            row = connection.execute(
-                "SELECT id, email, password_hash, is_active FROM users WHERE email = ?",
-                (email,),
-            ).fetchone()
+        if self.database_url:
+            with self._postgres() as connection:
+                row = connection.execute(
+                    "SELECT id, email, password_hash, is_active FROM users WHERE email = %s",
+                    (email,),
+                ).fetchone()
+        else:
+            with self._connect() as connection:
+                row = connection.execute(
+                    "SELECT id, email, password_hash, is_active FROM users WHERE email = ?",
+                    (email,),
+                ).fetchone()
         if row is None or not row["is_active"] or not self._verify_password(password, row["password_hash"]):
             return None
         return {"id": row["id"], "email": row["email"], "is_active": bool(row["is_active"])}
@@ -91,21 +117,39 @@ class AuthService:
     def create_session(self, user_id: str) -> str:
         session_id = secrets.token_urlsafe(32)
         now = datetime.now(timezone.utc)
-        with self._connect() as connection:
-            connection.execute(
-                "INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
-                (
-                    session_id,
-                    user_id,
-                    (now + timedelta(seconds=SESSION_MAX_AGE_SECONDS)).isoformat(),
-                    now.isoformat(),
-                ),
-            )
+        values = (
+            session_id,
+            user_id,
+            (now + timedelta(seconds=SESSION_MAX_AGE_SECONDS)).isoformat(),
+            now.isoformat(),
+        )
+        if self.database_url:
+            with self._postgres() as connection:
+                connection.execute(
+                    "INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (%s, %s, %s, %s)",
+                    values,
+                )
+        else:
+            with self._connect() as connection:
+                connection.execute(
+                    "INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)",
+                    values,
+                )
         return session_id
 
     def get_user_by_session(self, session_id: str) -> dict[str, str | bool] | None:
-        with self._connect() as connection:
-            row = connection.execute(
+        query = """
+                SELECT users.id, users.email, users.is_active, sessions.expires_at
+                FROM sessions JOIN users ON users.id = sessions.user_id
+                WHERE sessions.id = ?
+                """
+        if self.database_url:
+            query = query.replace("?", "%s")
+            with self._postgres() as connection:
+                row = connection.execute(query, (session_id,)).fetchone()
+        else:
+            with self._connect() as connection:
+                row = connection.execute(
                 """
                 SELECT users.id, users.email, users.is_active, sessions.expires_at
                 FROM sessions JOIN users ON users.id = sessions.user_id
@@ -115,11 +159,20 @@ class AuthService:
             ).fetchone()
         if row is None or not row["is_active"]:
             return None
-        if datetime.fromisoformat(row["expires_at"]) <= datetime.now(timezone.utc):
+        expires_at = row["expires_at"]
+        if isinstance(expires_at, str):
+            expires_at = datetime.fromisoformat(expires_at)
+        if expires_at.tzinfo is None:
+            expires_at = expires_at.replace(tzinfo=timezone.utc)
+        if expires_at <= datetime.now(timezone.utc):
             self.delete_session(session_id)
             return None
         return {"id": row["id"], "email": row["email"], "is_active": True}
 
     def delete_session(self, session_id: str) -> None:
-        with self._connect() as connection:
-            connection.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
+        if self.database_url:
+            with self._postgres() as connection:
+                connection.execute("DELETE FROM sessions WHERE id = %s", (session_id,))
+        else:
+            with self._connect() as connection:
+                connection.execute("DELETE FROM sessions WHERE id = ?", (session_id,))
