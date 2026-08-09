@@ -1,10 +1,12 @@
 name: ApplyLens CI
 
 on:
+  workflow_dispatch:
   push:
     branches:
       - main
       - "sprint-*"
+      - "codex/sprint-*"
   pull_request:
     branches:
       - main
@@ -29,6 +31,12 @@ jobs:
 
       - name: Install dependencies
         run: python -m pip install -r requirements.txt
+
+      - name: Verify installed dependencies
+        run: python -m pip check
+
+      - name: Compile backend modules
+        run: python -m compileall -q app
 
       - name: Run backend tests
         run: python -m pytest tests -q
@@ -69,5 +77,21 @@ jobs:
       - name: Validate Compose configuration
         run: docker compose config
 
+      - name: Validate production Compose configuration
+        env:
+          POSTGRES_PASSWORD: ci-placeholder
+          DATABASE_URL: postgresql://applylens:ci-placeholder@postgres:5432/applylens
+          WEB_ORIGIN: https://app.example.com
+          PUBLIC_API_URL: https://api.example.com
+        run: docker compose -f docker-compose.production.yml config
+
       - name: Build API and frontend images
         run: docker compose build api web
+
+      - name: Build production API and frontend images
+        env:
+          POSTGRES_PASSWORD: ci-placeholder
+          DATABASE_URL: postgresql://applylens:ci-placeholder@postgres:5432/applylens
+          WEB_ORIGIN: https://app.example.com
+          PUBLIC_API_URL: https://api.example.com
+        run: docker compose -f docker-compose.production.yml build api web

@@ -1,0 +1,72 @@
+name: applylens
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-applylens}
+      POSTGRES_USER: ${POSTGRES_USER:-applylens}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in the production environment file}
+    volumes:
+      - applylens-postgres:/var/lib/postgresql/data
+      - ./apps/api/migrations/001_pgvector.sql:/docker-entrypoint-initdb.d/001_pgvector.sql:ro
+      - ./apps/api/migrations/002_application_data.sql:/docker-entrypoint-initdb.d/002_application_data.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  api:
+    build:
+      context: ./apps/api
+    restart: unless-stopped
+    environment:
+      APP_ENV: production
+      WEB_ORIGIN: ${WEB_ORIGIN:?Set the public HTTPS frontend origin}
+      DATABASE_URL: ${DATABASE_URL:?Set the PostgreSQL connection URL}
+      LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      RETRIEVAL_PROVIDER: ${RETRIEVAL_PROVIDER:-lexical}
+      RETRIEVAL_STORAGE: ${RETRIEVAL_STORAGE:-memory}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${API_PORT:-8000}:8000"
+    volumes:
+      - applylens-uploads:/opt/applylens/apps/api/storage/uploads
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health/ready')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  web:
+    build:
+      context: ./apps/web
+      args:
+        VITE_API_URL: ${PUBLIC_API_URL:?Set the public HTTPS API URL}
+    restart: unless-stopped
+    ports:
+      - "${BIND_ADDRESS:-127.0.0.1}:${WEB_PORT:-8080}:80"
+    depends_on:
+      api:
+        condition: service_healthy
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  applylens-postgres:
+  applylens-uploads:

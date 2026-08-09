@@ -4,7 +4,7 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 
 ## Current verification
 
-- Backend test suite: 96 passing tests
+- Backend test suite: 111 passing tests
 - Frontend tests and production build: passing
 
 
@@ -70,6 +70,14 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 - Use atomic, path-safe file storage for uploaded document bytes.
 - Report database schema readiness through `/health/ready`.
 - Verify migration structure, storage integrity, and ownership boundaries with automated tests.
+
+### Sprint 9 — Deployment and observability
+
+- Reject incomplete or insecure production configuration at startup.
+- Add privacy-safe JSON request logs and traceable `X-Request-ID` responses.
+- Run CI checks for Sprint branches, backend compilation, dependency consistency, tests, builds, and Compose files.
+- Provide a production Compose stack with persistent database/upload volumes and bounded container logs.
+- Document deployment, readiness checks, backups, restores, request tracing, and rollback safety.
 
 The default retrieval implementation remains local and deterministic, so the MVP
 works without external services. Production deployments can opt into OpenAI
@@ -138,6 +146,10 @@ uvicorn app.main:app --reload
 Open the web app at `http://localhost:5173` and API documentation at `http://localhost:8000/docs`.
 For deployment probes, `/health` checks process liveness and `/health/ready`
 checks configured runtime dependencies.
+
+For production deployment and recovery procedures, see
+[`docs/operations.md`](docs/operations.md). Start from
+`deploy/production.env.example`; never commit the populated production environment file.
 
 ## MVP boundary
 

@@ -11,6 +11,9 @@ import json
 from typing import Any
 
 
+DATABASE_CONNECT_TIMEOUT_SECONDS = 3
+
+
 class PostgresApplicationStore:
     def __init__(self, database_url: str) -> None:
         self.database_url = database_url
@@ -19,7 +22,11 @@ class PostgresApplicationStore:
         import psycopg
         from psycopg.rows import dict_row
 
-        return psycopg.connect(self.database_url, row_factory=dict_row)
+        return psycopg.connect(
+            self.database_url,
+            row_factory=dict_row,
+            connect_timeout=DATABASE_CONNECT_TIMEOUT_SECONDS,
+        )
 
     @staticmethod
     def _json_value(value: Any) -> Any:

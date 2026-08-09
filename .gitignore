@@ -1,4 +1,6 @@
 .env
+deploy/*.env
+!deploy/*.env.example
 .venv/
 __pycache__/
 .pytest_cache/

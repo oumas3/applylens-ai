@@ -10,6 +10,11 @@ from app.routers.reviews import router as reviews_router
 from app.routers.auth import router as auth_router
 from app.config import get_settings
 from app.services.application_store import PostgresApplicationStore
+from app.observability import (
+    RequestObservabilityMiddleware,
+    UnhandledExceptionMiddleware,
+    configure_request_logger,
+)
 
 
 class ProductInfo(BaseModel):
@@ -26,6 +31,7 @@ class ReadinessResponse(BaseModel):
 
 
 settings = get_settings()
+request_logger = configure_request_logger(settings.log_level)
 
 app = FastAPI(
     title="ApplyLens AI API",
@@ -36,13 +42,16 @@ app = FastAPI(
     ),
 )
 
+app.add_middleware(UnhandledExceptionMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.web_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID"],
 )
+app.add_middleware(RequestObservabilityMiddleware, logger=request_logger)
 app.include_router(documents_router)
 app.include_router(opportunities_router)
 app.include_router(tasks_router)
@@ -111,7 +120,7 @@ def readiness() -> ReadinessResponse | JSONResponse:
 def product() -> ProductInfo:
     return ProductInfo(
         name="ApplyLens AI",
-        phase="Sprint 8 — Production persistence",
+        phase="Sprint 9 — Deployment and observability",
         supported_opportunities=["Master's", "PhD"],
         promise="Every decision is backed by evidence or marked unclear.",
     )

@@ -1,3 +1,4 @@
+import json
 import pytest
 from fastapi.testclient import TestClient
 
@@ -11,6 +12,7 @@ from app.routers import tasks as tasks_router
 from app.routers.auth import get_current_user
 
 from io import BytesIO
+from uuid import UUID
 
 from pypdf import PdfWriter
 from pypdf.generic import DecodedStreamObject, DictionaryObject, NameObject
@@ -112,6 +114,102 @@ def test_health() -> None:
     assert payload["environment"]
 
 
+def test_health_response_includes_generated_request_id() -> None:
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert str(UUID(response.headers["x-request-id"])) == response.headers["x-request-id"]
+
+
+def test_health_response_preserves_safe_request_id() -> None:
+    response = client.get("/health", headers={"X-Request-ID": "applylens-test-123"})
+
+    assert response.status_code == 200
+    assert response.headers["x-request-id"] == "applylens-test-123"
+
+
+def test_health_response_replaces_unsafe_request_id() -> None:
+    response = client.get("/health", headers={"X-Request-ID": "unsafe request id"})
+
+    assert response.status_code == 200
+    assert response.headers["x-request-id"] != "unsafe request id"
+    UUID(response.headers["x-request-id"])
+
+
+def test_cors_preflight_is_traced(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level("INFO", logger="applylens.request")
+    main_module.request_logger.addHandler(caplog.handler)
+
+    try:
+        response = client.options(
+            "/api/v1/documents",
+            headers={
+                "Origin": "http://localhost:5173",
+                "Access-Control-Request-Method": "GET",
+                "X-Request-ID": "applylens-preflight-123",
+            },
+        )
+    finally:
+        main_module.request_logger.removeHandler(caplog.handler)
+
+    record = next(item for item in caplog.records if item.name == "applylens.request")
+    payload = json.loads(record.message)
+    assert response.status_code == 200
+    assert response.headers["x-request-id"] == "applylens-preflight-123"
+    assert payload["method"] == "OPTIONS"
+    assert payload["request_id"] == "applylens-preflight-123"
+
+
+def test_access_log_is_structured_and_omits_query_string(caplog: pytest.LogCaptureFixture) -> None:
+    caplog.set_level("INFO", logger="applylens.request")
+    main_module.request_logger.addHandler(caplog.handler)
+
+    try:
+        response = client.get("/health?private=value")
+    finally:
+        main_module.request_logger.removeHandler(caplog.handler)
+
+    record = next(item for item in caplog.records if item.name == "applylens.request")
+    payload = json.loads(record.message)
+    assert response.status_code == 200
+    assert payload["event"] == "http_request"
+    assert payload["path"] == "/health"
+    assert payload["status_code"] == 200
+    assert payload["request_id"] == response.headers["x-request-id"]
+    assert "private" not in record.message
+
+
+def test_request_logger_has_a_dedicated_output_handler() -> None:
+    assert main_module.request_logger.handlers
+    assert main_module.request_logger.propagate is False
+
+
+def test_unhandled_error_response_keeps_request_id_and_cors(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def fail_current_user() -> None:
+        raise RuntimeError("test failure")
+
+    monkeypatch.setitem(
+        app.dependency_overrides,
+        get_current_user,
+        fail_current_user,
+    )
+    response = TestClient(app, raise_server_exceptions=False).get(
+        "/api/v1/documents",
+        headers={
+            "Origin": "http://localhost:5173",
+            "X-Request-ID": "applylens-error-123",
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.json() == {"detail": "Internal server error."}
+    assert response.headers["x-request-id"] == "applylens-error-123"
+    assert response.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert "X-Request-ID" in response.headers["access-control-expose-headers"]
+
+
 def test_readiness_reports_local_retrieval_ready() -> None:
     response = client.get("/health/ready")
 
@@ -169,7 +267,7 @@ def test_product_scope() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["supported_opportunities"] == ["Master's", "PhD"]
-    assert payload["phase"] == "Sprint 8 — Production persistence"
+    assert payload["phase"] == "Sprint 9 — Deployment and observability"
 
 
 def test_upload_document_accepts_valid_pdf() -> None:
