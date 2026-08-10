@@ -19,6 +19,8 @@ LOGIN_ATTEMPT_LIMIT = 5
 LOGIN_ATTEMPT_WINDOW_SECONDS = 15 * 60
 LOGIN_BLOCK_SECONDS = 15 * 60
 LOGIN_ATTEMPT_RETENTION_SECONDS = LOGIN_ATTEMPT_WINDOW_SECONDS + LOGIN_BLOCK_SECONDS
+PASSWORD_RESET_TOKEN_TTL_SECONDS = 60 * 60
+PASSWORD_RESET_REQUEST_COOLDOWN_SECONDS = 60
 
 
 class AuthService:
@@ -72,6 +74,16 @@ class AuthService:
                 );
                 CREATE INDEX IF NOT EXISTS login_attempts_window_started_idx
                     ON login_attempts (window_started);
+                CREATE TABLE IF NOT EXISTS password_reset_tokens (
+                    token_hash TEXT PRIMARY KEY,
+                    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                    expires_at TEXT NOT NULL,
+                    created_at TEXT NOT NULL
+                );
+                CREATE UNIQUE INDEX IF NOT EXISTS password_reset_tokens_user_id_idx
+                    ON password_reset_tokens (user_id);
+                CREATE INDEX IF NOT EXISTS password_reset_tokens_expires_at_idx
+                    ON password_reset_tokens (expires_at);
                 """
             )
 
@@ -373,6 +385,188 @@ class AuthService:
                     (self._hash_password(new_password), user_id),
                 )
                 connection.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        return True
+
+    @staticmethod
+    def _hash_reset_token(token: str) -> str:
+        return hashlib.sha256(token.encode("utf-8")).hexdigest()
+
+    def create_password_reset_token(
+        self,
+        email: str,
+        *,
+        now: datetime | None = None,
+    ) -> str | None:
+        current_time = now or datetime.now(timezone.utc)
+        token = secrets.token_urlsafe(32)
+        token_hash = self._hash_reset_token(token)
+        expires_at = current_time + timedelta(seconds=PASSWORD_RESET_TOKEN_TTL_SECONDS)
+        cooldown_started = current_time - timedelta(
+            seconds=PASSWORD_RESET_REQUEST_COOLDOWN_SECONDS
+        )
+
+        if self.database_url:
+            with self._postgres() as connection:
+                user = connection.execute(
+                    "SELECT id FROM users WHERE email = %s AND is_active = TRUE FOR UPDATE",
+                    (email,),
+                ).fetchone()
+                if user is None:
+                    return None
+                recent = connection.execute(
+                    """
+                    SELECT 1 FROM password_reset_tokens
+                    WHERE user_id = %s AND created_at > %s
+                    """,
+                    (user["id"], cooldown_started.isoformat()),
+                ).fetchone()
+                if recent is not None:
+                    return None
+                connection.execute(
+                    "DELETE FROM password_reset_tokens WHERE expires_at <= %s OR user_id = %s",
+                    (current_time.isoformat(), user["id"]),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO password_reset_tokens (
+                        token_hash, user_id, expires_at, created_at
+                    ) VALUES (%s, %s, %s, %s)
+                    """,
+                    (
+                        token_hash,
+                        user["id"],
+                        expires_at.isoformat(),
+                        current_time.isoformat(),
+                    ),
+                )
+        else:
+            with self._connect() as connection:
+                user = connection.execute(
+                    "SELECT id FROM users WHERE email = ? AND is_active = 1",
+                    (email,),
+                ).fetchone()
+                if user is None:
+                    return None
+                connection.execute("BEGIN IMMEDIATE")
+                user = connection.execute(
+                    "SELECT id FROM users WHERE email = ? AND is_active = 1",
+                    (email,),
+                ).fetchone()
+                if user is None:
+                    return None
+                recent = connection.execute(
+                    """
+                    SELECT 1 FROM password_reset_tokens
+                    WHERE user_id = ? AND created_at > ?
+                    """,
+                    (user["id"], cooldown_started.isoformat()),
+                ).fetchone()
+                if recent is not None:
+                    return None
+                connection.execute(
+                    "DELETE FROM password_reset_tokens WHERE expires_at <= ? OR user_id = ?",
+                    (current_time.isoformat(), user["id"]),
+                )
+                connection.execute(
+                    """
+                    INSERT INTO password_reset_tokens (
+                        token_hash, user_id, expires_at, created_at
+                    ) VALUES (?, ?, ?, ?)
+                    """,
+                    (
+                        token_hash,
+                        user["id"],
+                        expires_at.isoformat(),
+                        current_time.isoformat(),
+                    ),
+                )
+        return token
+
+    def reset_password(
+        self,
+        token: str,
+        new_password: str,
+        *,
+        now: datetime | None = None,
+    ) -> bool:
+        current_time = now or datetime.now(timezone.utc)
+        token_hash = self._hash_reset_token(token)
+
+        if self.database_url:
+            with self._postgres() as connection:
+                row = connection.execute(
+                    """
+                    SELECT password_reset_tokens.user_id,
+                           password_reset_tokens.expires_at
+                    FROM password_reset_tokens
+                    JOIN users ON users.id = password_reset_tokens.user_id
+                    WHERE password_reset_tokens.token_hash = %s
+                      AND users.is_active = TRUE
+                    FOR UPDATE
+                    """,
+                    (token_hash,),
+                ).fetchone()
+                if row is None:
+                    return False
+                expires_at = self._as_utc_datetime(row["expires_at"])
+                if expires_at is None or expires_at <= current_time:
+                    connection.execute(
+                        "DELETE FROM password_reset_tokens WHERE token_hash = %s",
+                        (token_hash,),
+                    )
+                    return False
+                connection.execute(
+                    "UPDATE users SET password_hash = %s WHERE id = %s",
+                    (self._hash_password(new_password), row["user_id"]),
+                )
+                connection.execute(
+                    "DELETE FROM sessions WHERE user_id = %s",
+                    (row["user_id"],),
+                )
+                connection.execute(
+                    "DELETE FROM password_reset_tokens WHERE user_id = %s",
+                    (row["user_id"],),
+                )
+        else:
+            with self._connect() as connection:
+                row = connection.execute(
+                    """
+                    SELECT password_reset_tokens.user_id,
+                           password_reset_tokens.expires_at
+                    FROM password_reset_tokens
+                    JOIN users ON users.id = password_reset_tokens.user_id
+                    WHERE password_reset_tokens.token_hash = ?
+                      AND users.is_active = 1
+                    """,
+                    (token_hash,),
+                ).fetchone()
+                if row is None:
+                    return False
+                expires_at = self._as_utc_datetime(row["expires_at"])
+                if expires_at is None or expires_at <= current_time:
+                    connection.execute(
+                        "DELETE FROM password_reset_tokens WHERE token_hash = ?",
+                        (token_hash,),
+                    )
+                    return False
+                deleted = connection.execute(
+                    "DELETE FROM password_reset_tokens WHERE token_hash = ?",
+                    (token_hash,),
+                )
+                if deleted.rowcount != 1:
+                    return False
+                connection.execute(
+                    "UPDATE users SET password_hash = ? WHERE id = ?",
+                    (self._hash_password(new_password), row["user_id"]),
+                )
+                connection.execute(
+                    "DELETE FROM sessions WHERE user_id = ?",
+                    (row["user_id"],),
+                )
+                connection.execute(
+                    "DELETE FROM password_reset_tokens WHERE user_id = ?",
+                    (row["user_id"],),
+                )
         return True
 
     def get_user_by_session(self, session_id: str) -> dict[str, str | bool] | None:

@@ -1,14 +1,21 @@
 import hmac
+import logging
 from typing import Annotated
+from urllib.parse import urlencode
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
+from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.config import get_settings
 from app.services.auth_service import AuthService, SESSION_MAX_AGE_SECONDS
+from app.services.email_service import PasswordResetEmailSender
 
 
 SESSION_COOKIE = "applylens_session"
+PASSWORD_RESET_REQUEST_MESSAGE = (
+    "If an active account matches that email, a password reset link will be sent."
+)
+logger = logging.getLogger("applylens.auth")
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
@@ -32,9 +39,37 @@ class PasswordChangeRequest(BaseModel):
     new_password: str = Field(..., min_length=12, max_length=128)
 
 
+class PasswordResetRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    email: EmailStr
+
+
+class PasswordResetConfirmRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    token: str = Field(..., min_length=32, max_length=512)
+    new_password: str = Field(..., min_length=12, max_length=128)
+
+
+class MessageResponse(BaseModel):
+    message: str
+
+
 def get_auth_service() -> AuthService:
     settings = get_settings()
     return AuthService(settings.auth_database_path, settings.database_url)
+
+
+def get_password_reset_sender() -> PasswordResetEmailSender:
+    return PasswordResetEmailSender(get_settings())
+
+
+def deliver_password_reset_email(recipient: str, reset_url: str) -> None:
+    try:
+        get_password_reset_sender().send(recipient, reset_url)
+    except Exception:
+        logger.exception("Password reset email delivery failed.")
 
 
 def set_session_cookie(response: Response, session_id: str) -> None:
@@ -124,6 +159,40 @@ def change_password(
             detail="The current password is incorrect.",
         )
     set_session_cookie(response, service.create_session(str(user["id"])))
+
+
+@router.post(
+    "/password-reset/request",
+    response_model=MessageResponse,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def request_password_reset(
+    request: PasswordResetRequest,
+    background_tasks: BackgroundTasks,
+) -> MessageResponse:
+    settings = get_settings()
+    token = get_auth_service().create_password_reset_token(request.email.lower())
+    if token is not None:
+        reset_url = f"{settings.web_origin}/#{urlencode({'reset_token': token})}"
+        background_tasks.add_task(
+            deliver_password_reset_email,
+            request.email.lower(),
+            reset_url,
+        )
+    return MessageResponse(message=PASSWORD_RESET_REQUEST_MESSAGE)
+
+
+@router.post("/password-reset/confirm", status_code=status.HTTP_204_NO_CONTENT)
+def confirm_password_reset(
+    request: PasswordResetConfirmRequest,
+    response: Response,
+) -> None:
+    if not get_auth_service().reset_password(request.token, request.new_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The password reset link is invalid or has expired.",
+        )
+    response.delete_cookie(SESSION_COOKIE)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)

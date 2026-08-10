@@ -4,7 +4,7 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 
 ## Current verification
 
-- Backend test suite: 125 passing tests
+- Backend test suite: 139 passing tests
 - Frontend tests and production build: passing
 
 
@@ -86,6 +86,14 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 - Allow authenticated password changes with stronger new-password requirements.
 - Revoke other active sessions and rotate the current session after a password change.
 - Add a compact account-security panel and automated backend/frontend coverage.
+
+### Sprint 11 — Account recovery
+
+- Request password recovery without revealing whether an account exists.
+- Store only hashed, one-time reset tokens with one-hour expiry and request cooldowns.
+- Deliver reset links through SMTP in production and console output in local development.
+- Revoke every active session after a successful reset.
+- Provide compact forgot-password and reset-password screens with automated coverage.
 
 The default retrieval implementation remains local and deterministic, so the MVP
 works without external services. Production deployments can opt into OpenAI

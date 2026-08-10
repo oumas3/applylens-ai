@@ -9,6 +9,8 @@ from app.services.auth_service import (
     LOGIN_ATTEMPT_LIMIT,
     LOGIN_ATTEMPT_RETENTION_SECONDS,
     LOGIN_BLOCK_SECONDS,
+    PASSWORD_RESET_REQUEST_COOLDOWN_SECONDS,
+    PASSWORD_RESET_TOKEN_TTL_SECONDS,
     AuthService,
 )
 
@@ -109,3 +111,94 @@ def test_recording_failure_removes_stale_attempt_rows(tmp_path) -> None:
             (stale_key,),
         ).fetchone()
     assert stale_row is None
+
+
+def test_password_reset_token_is_hashed_and_single_use(tmp_path) -> None:
+    service = AuthService(tmp_path / "auth.db")
+    user = service.create_user("candidate@example.com", "correct horse battery")
+    session_id = service.create_session(str(user["id"]))
+    now = datetime(2026, 8, 10, tzinfo=timezone.utc)
+
+    token = service.create_password_reset_token(
+        "candidate@example.com",
+        now=now,
+    )
+
+    assert token is not None
+    with service._connect() as connection:
+        row = connection.execute(
+            "SELECT token_hash FROM password_reset_tokens"
+        ).fetchone()
+    assert row is not None
+    assert row["token_hash"] == service._hash_reset_token(token)
+    assert row["token_hash"] != token
+
+    assert service.reset_password(
+        token,
+        "a different secure password",
+        now=now,
+    )
+    assert service.reset_password(
+        token,
+        "another secure password",
+        now=now,
+    ) is False
+    assert service.get_user_by_session(session_id) is None
+    assert service.authenticate("candidate@example.com", "correct horse battery") is None
+    assert service.authenticate(
+        "candidate@example.com",
+        "a different secure password",
+    ) is not None
+
+
+def test_password_reset_token_expires_without_changing_password(tmp_path) -> None:
+    service = AuthService(tmp_path / "auth.db")
+    service.create_user("candidate@example.com", "correct horse battery")
+    now = datetime(2026, 8, 10, tzinfo=timezone.utc)
+    token = service.create_password_reset_token("candidate@example.com", now=now)
+
+    assert token is not None
+    assert service.reset_password(
+        token,
+        "a different secure password",
+        now=now + timedelta(seconds=PASSWORD_RESET_TOKEN_TTL_SECONDS),
+    ) is False
+    assert service.authenticate(
+        "candidate@example.com",
+        "correct horse battery",
+    ) is not None
+
+
+def test_password_reset_requests_are_cooled_down_and_replace_old_tokens(tmp_path) -> None:
+    service = AuthService(tmp_path / "auth.db")
+    service.create_user("candidate@example.com", "correct horse battery")
+    now = datetime(2026, 8, 10, tzinfo=timezone.utc)
+    first = service.create_password_reset_token("candidate@example.com", now=now)
+
+    assert first is not None
+    assert service.create_password_reset_token(
+        "candidate@example.com",
+        now=now + timedelta(seconds=PASSWORD_RESET_REQUEST_COOLDOWN_SECONDS - 1),
+    ) is None
+    replacement = service.create_password_reset_token(
+        "candidate@example.com",
+        now=now + timedelta(seconds=PASSWORD_RESET_REQUEST_COOLDOWN_SECONDS),
+    )
+    assert replacement is not None
+    assert replacement != first
+    assert service.reset_password(
+        first,
+        "a different secure password",
+        now=now + timedelta(seconds=PASSWORD_RESET_REQUEST_COOLDOWN_SECONDS),
+    ) is False
+
+
+def test_unknown_email_does_not_create_a_password_reset_record(tmp_path) -> None:
+    service = AuthService(tmp_path / "auth.db")
+
+    assert service.create_password_reset_token("missing@example.com") is None
+    with service._connect() as connection:
+        count = connection.execute(
+            "SELECT COUNT(*) FROM password_reset_tokens"
+        ).fetchone()[0]
+    assert count == 0

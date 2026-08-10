@@ -4,6 +4,15 @@ from pydantic import ValidationError
 from app.config import Settings
 
 
+SMTP_SETTINGS = {
+    "email_delivery": "smtp",
+    "smtp_host": "smtp.example.com",
+    "smtp_username": "applylens",
+    "smtp_password": "test-password",
+    "smtp_from_email": "support@example.com",
+}
+
+
 def test_retrieval_settings_have_stable_development_defaults() -> None:
     settings = Settings(_env_file=None)
 
@@ -126,6 +135,7 @@ def test_production_accepts_persistent_https_configuration() -> None:
         web_origin="https://app.applylens.example",
         database_url="postgresql://postgres/applylens",
         log_level="WARNING",
+        **SMTP_SETTINGS,
     )
 
     assert settings.app_env == "production"
@@ -139,6 +149,7 @@ def test_web_origin_is_normalized_for_exact_cors_matching() -> None:
         app_env="production",
         web_origin=" https://app.applylens.example/ ",
         database_url="postgresql://postgres/applylens",
+        **SMTP_SETTINGS,
     )
 
     assert settings.web_origin == "https://app.applylens.example"
@@ -152,4 +163,31 @@ def test_production_rejects_web_origin_with_path() -> None:
             app_env="production",
             web_origin="https://app.applylens.example/path",
             database_url="postgresql://postgres/applylens",
+        )
+
+
+def test_production_requires_smtp_delivery() -> None:
+    with pytest.raises(ValidationError, match="EMAIL_DELIVERY must be smtp"):
+        Settings(
+            _env_file=None,
+            app_env="production",
+            web_origin="https://app.applylens.example",
+            database_url="postgresql://postgres/applylens",
+        )
+
+
+def test_smtp_delivery_requires_complete_credentials() -> None:
+    with pytest.raises(ValidationError, match="SMTP_HOST is required"):
+        Settings(_env_file=None, email_delivery="smtp")
+
+
+def test_production_requires_encrypted_smtp_transport() -> None:
+    with pytest.raises(ValidationError, match="SMTP_STARTTLS must be true"):
+        Settings(
+            _env_file=None,
+            app_env="production",
+            web_origin="https://app.applylens.example",
+            database_url="postgresql://postgres/applylens",
+            smtp_starttls=False,
+            **SMTP_SETTINGS,
         )

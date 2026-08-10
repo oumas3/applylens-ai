@@ -3,7 +3,7 @@ from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
 
-from pydantic import Field, SecretStr, field_validator, model_validator
+from pydantic import EmailStr, Field, SecretStr, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -26,6 +26,13 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = None
     openai_embedding_model: str = "text-embedding-3-small"
     openai_base_url: str = "https://api.openai.com/v1"
+    email_delivery: Literal["console", "smtp"] = "console"
+    smtp_host: str | None = None
+    smtp_port: int = Field(default=587, gt=0, le=65535)
+    smtp_username: str | None = None
+    smtp_password: SecretStr | None = None
+    smtp_from_email: EmailStr | None = None
+    smtp_starttls: bool = True
 
     @field_validator("web_origin")
     @classmethod
@@ -47,6 +54,15 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_URL is required when retrieval_storage is pgvector")
         if self.retrieval_storage == "pgvector" and self.retrieval_provider != "openai":
             raise ValueError("retrieval_provider must be openai when retrieval_storage is pgvector")
+        if self.email_delivery == "smtp":
+            if not self.smtp_host or not self.smtp_host.strip():
+                raise ValueError("SMTP_HOST is required when EMAIL_DELIVERY is smtp")
+            if not self.smtp_username or not self.smtp_username.strip():
+                raise ValueError("SMTP_USERNAME is required when EMAIL_DELIVERY is smtp")
+            if self.smtp_password is None or not self.smtp_password.get_secret_value().strip():
+                raise ValueError("SMTP_PASSWORD is required when EMAIL_DELIVERY is smtp")
+            if self.smtp_from_email is None:
+                raise ValueError("SMTP_FROM_EMAIL is required when EMAIL_DELIVERY is smtp")
         if self.app_env == "production":
             if not self.database_url:
                 raise ValueError("DATABASE_URL is required when APP_ENV is production")
@@ -72,6 +88,10 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "WEB_ORIGIN must not contain credentials, path, query, or fragment"
                 )
+            if self.email_delivery != "smtp":
+                raise ValueError("EMAIL_DELIVERY must be smtp when APP_ENV is production")
+            if not self.smtp_starttls:
+                raise ValueError("SMTP_STARTTLS must be true when APP_ENV is production")
         return self
 
     model_config = SettingsConfigDict(

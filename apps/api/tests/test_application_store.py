@@ -25,19 +25,23 @@ def test_postgres_connections_have_a_bounded_timeout(monkeypatch) -> None:
     assert captured["connect_timeout"] == DATABASE_CONNECT_TIMEOUT_SECONDS
 
 
-def test_schema_check_requires_login_attempt_table(monkeypatch) -> None:
+@pytest.mark.parametrize("missing_table", ["login_attempts", "password_reset_tokens"])
+def test_schema_check_requires_auth_security_tables(monkeypatch, missing_table: str) -> None:
     class Result:
         @staticmethod
         def fetchone():
-            return {
+            tables = {
                 "users": "users",
                 "sessions": "sessions",
-                "login_attempts": None,
+                "login_attempts": "login_attempts",
+                "password_reset_tokens": "password_reset_tokens",
                 "documents": "documents",
                 "opportunities": "opportunities",
                 "reviews": "reviews",
                 "tasks": "tasks",
             }
+            tables[missing_table] = None
+            return tables
 
     class Connection:
         def __enter__(self):
@@ -53,5 +57,5 @@ def test_schema_check_requires_login_attempt_table(monkeypatch) -> None:
     store = PostgresApplicationStore("postgresql://postgres/applylens")
     monkeypatch.setattr(store, "_connect", Connection)
 
-    with pytest.raises(RuntimeError, match="login_attempts"):
+    with pytest.raises(RuntimeError, match=missing_table):
         store.check()

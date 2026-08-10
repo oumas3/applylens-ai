@@ -90,12 +90,23 @@ type ReviewComparison = {
 }
 
 export default function App() {
+  const initialResetToken = new URLSearchParams(
+    window.location.hash.replace(/^#/, '')
+  ).get('reset_token') ?? ''
   const [authUser, setAuthUser] = useState<AuthUser | null>(null)
   const [authLoading, setAuthLoading] = useState(true)
-  const [authMode, setAuthMode] = useState<'login' | 'register'>('login')
+  const [authMode, setAuthMode] = useState<'login' | 'register' | 'forgot' | 'reset'>(
+    initialResetToken ? 'reset' : 'login'
+  )
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
-  const [authStatus, setAuthStatus] = useState('Sign in to access your private workspace.')
+  const [resetToken, setResetToken] = useState(initialResetToken)
+  const [resetPassword, setResetPassword] = useState('')
+  const [authStatus, setAuthStatus] = useState(
+    initialResetToken
+      ? 'Choose a new password for your account.'
+      : 'Sign in to access your private workspace.'
+  )
   const [showSecurity, setShowSecurity] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
@@ -196,6 +207,60 @@ export default function App() {
     } catch (error) {
       setAuthStatus(error instanceof Error ? error.message : 'Unable to authenticate.')
     }
+  }
+
+  async function handlePasswordResetRequest(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setAuthStatus('Requesting a password reset link...')
+    try {
+      const response = await apiFetch(`${API_URL}/api/v1/auth/password-reset/request`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: authEmail }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) {
+        throw new Error(payload?.detail ?? 'Unable to request a password reset.')
+      }
+      setAuthStatus(payload?.message ?? 'Check your email for a password reset link.')
+    } catch (error) {
+      setAuthStatus(
+        error instanceof Error ? error.message : 'Unable to request a password reset.'
+      )
+    }
+  }
+
+  async function handlePasswordResetConfirm(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setAuthStatus('Updating your password...')
+    try {
+      const response = await apiFetch(`${API_URL}/api/v1/auth/password-reset/confirm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: resetToken, new_password: resetPassword }),
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.detail ?? 'Unable to reset your password.')
+      }
+      window.history.replaceState({}, '', window.location.pathname)
+      setResetToken('')
+      setResetPassword('')
+      setAuthMode('login')
+      setAuthStatus('Password reset. Sign in with your new password.')
+    } catch (error) {
+      setAuthStatus(error instanceof Error ? error.message : 'Unable to reset your password.')
+    }
+  }
+
+  function returnToSignIn() {
+    if (resetToken) {
+      window.history.replaceState({}, '', window.location.pathname)
+      setResetToken('')
+      setResetPassword('')
+    }
+    setAuthMode('login')
+    setAuthStatus('Sign in to access your private workspace.')
   }
 
   async function handleLogout() {
@@ -762,27 +827,69 @@ async function handlePreviewText(
   }
 
   if (!authUser) {
+    const heading = {
+      login: 'Welcome back.',
+      register: 'Create your workspace.',
+      forgot: 'Reset your password.',
+      reset: 'Choose a new password.',
+    }[authMode]
+
     return (
       <main className="auth-shell">
         <section className="decision-card auth-card">
           <p className="eyebrow">APPLYLENS AI</p>
-          <h1>{authMode === 'login' ? 'Welcome back.' : 'Create your workspace.'}</h1>
+          <h1>{heading}</h1>
           <p className="lead">Your documents and opportunity reviews are private to your account.</p>
-          <form className="analysis-form" onSubmit={handleAuthSubmit}>
-            <label className="upload-field">
-              <span>Email</span>
-              <input type="email" autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} required />
-            </label>
-            <label className="upload-field">
-              <span>Password</span>
-              <input type="password" autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} minLength={8} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} required />
-            </label>
-            <button type="submit">{authMode === 'login' ? 'Sign in' : 'Create account'}</button>
-          </form>
+          {authMode === 'forgot' ? (
+            <form className="analysis-form" onSubmit={handlePasswordResetRequest}>
+              <label className="upload-field">
+                <span>Email</span>
+                <input type="email" autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} required />
+              </label>
+              <button type="submit">Send reset link</button>
+            </form>
+          ) : authMode === 'reset' ? (
+            <form className="analysis-form" onSubmit={handlePasswordResetConfirm}>
+              <label className="upload-field">
+                <span>New password (at least 12 characters)</span>
+                <input type="password" autoComplete="new-password" minLength={12} value={resetPassword} onChange={(event) => setResetPassword(event.target.value)} required />
+              </label>
+              <button type="submit">Reset password</button>
+            </form>
+          ) : (
+            <form className="analysis-form" onSubmit={handleAuthSubmit}>
+              <label className="upload-field">
+                <span>Email</span>
+                <input type="email" autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} required />
+              </label>
+              <label className="upload-field">
+                <span>Password</span>
+                <input type="password" autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} minLength={8} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} required />
+              </label>
+              <button type="submit">{authMode === 'login' ? 'Sign in' : 'Create account'}</button>
+            </form>
+          )}
           <p className="analysis-status">{authStatus}</p>
-          <button className="ghost" type="button" onClick={() => setAuthMode(authMode === 'login' ? 'register' : 'login')}>
-            {authMode === 'login' ? 'Need an account? Register' : 'Already registered? Sign in'}
-          </button>
+          <div className="auth-actions">
+            {authMode === 'login' && (
+              <button className="ghost" type="button" onClick={() => setAuthMode('forgot')}>
+                Forgot password?
+              </button>
+            )}
+            <button
+              className="ghost"
+              type="button"
+              onClick={() => {
+                if (authMode === 'login') {
+                  setAuthMode('register')
+                } else {
+                  returnToSignIn()
+                }
+              }}
+            >
+              {authMode === 'login' ? 'Need an account? Register' : 'Back to sign in'}
+            </button>
+          </div>
         </section>
       </main>
     )

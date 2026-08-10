@@ -3,7 +3,7 @@
 ## Deployment
 
 1. Copy `deploy/production.env.example` to a secure file outside the repository.
-2. Replace the database password and both public HTTPS URLs. URL-encode special characters in `DATABASE_URL`.
+2. Replace the database password, both public HTTPS URLs, and all SMTP placeholders. URL-encode special characters in `DATABASE_URL`.
 3. Put an HTTPS reverse proxy or load balancer in front of the web and API ports. They bind to `127.0.0.1` by default; change `BIND_ADDRESS` only when the host network is protected appropriately.
 4. Set `FORWARDED_ALLOW_IPS` to the proxy address or CIDR seen by the API container. Login throttling uses the trusted client address. Do not use `*` when untrusted clients can reach the API directly.
 5. Validate the deployment configuration:
@@ -28,7 +28,21 @@ For Sprint 10, apply the idempotent login-throttling migration to an existing da
 docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml exec -T postgres psql -U applylens -d applylens -f /docker-entrypoint-initdb.d/003_login_attempts.sql
 ```
 
+For Sprint 11, apply the account-recovery-token migration before updating the API:
+
+```powershell
+docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml exec -T postgres psql -U applylens -d applylens -f /docker-entrypoint-initdb.d/004_password_reset_tokens.sql
+```
+
 Adjust the database user and name if the production environment overrides their defaults.
+
+## Account recovery email
+
+Production startup requires `EMAIL_DELIVERY=smtp`, complete SMTP credentials, and STARTTLS. Use a transactional-email provider that supports STARTTLS, use a dedicated credential, and keep `SMTP_PASSWORD` only in the secure environment file.
+
+Development defaults to `EMAIL_DELIVERY=console`. In that mode the reset link is written to the local API log so the flow can be tested without an email provider. Never use console delivery in a shared or production environment because the link is an account-recovery secret.
+
+After deployment, request a reset for a controlled test account and confirm that the message arrives, the link works once, the link expires, and existing sessions are rejected after the password changes.
 
 ## Logs and request tracing
 

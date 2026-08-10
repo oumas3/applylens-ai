@@ -183,3 +183,21 @@
     grid-template-columns: 1fr;
   }
 }
+
+.auth-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: linear-gradient(135deg, #faf9ff 0%, #eef5ff 100%);
+}
+
+.auth-card {
+  width: min(100%, 460px);
+}
+
+.auth-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}

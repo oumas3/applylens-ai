@@ -43,6 +43,7 @@ function defaultFetchResponse(url: string, method: string): MockResponse {
 afterEach(() => {
   cleanup()
   vi.restoreAllMocks()
+  window.history.replaceState({}, '', '/')
 })
 
 describe('ApplyLens UI', () => {
@@ -161,6 +162,81 @@ describe('ApplyLens UI', () => {
         method: 'POST',
         body: JSON.stringify({
           current_password: 'correct horse battery',
+          new_password: 'a different secure password',
+        }),
+      })
+    )
+  })
+
+  it('requests a password reset without exposing account status', async () => {
+    const safeMessage =
+      'If an active account matches that email, a password reset link will be sent.'
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/auth/me')) {
+        return Promise.resolve(responseFor({ detail: 'Authentication required.' }, 401))
+      }
+      if (url.endsWith('/api/v1/auth/password-reset/request')) {
+        return Promise.resolve(responseFor({ message: safeMessage }, 202))
+      }
+      return Promise.resolve(defaultFetchResponse(url, init?.method ?? 'GET'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await waitFor(() => expect(screen.getByText('Welcome back.')).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Forgot password?' }))
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'candidate@example.com' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Send reset link' }))
+
+    await waitFor(() => expect(screen.getByText(safeMessage)).toBeInTheDocument())
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/v1/auth/password-reset/request'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({ email: 'candidate@example.com' }),
+      })
+    )
+  })
+
+  it('confirms a reset token from the URL and returns to sign in', async () => {
+    window.history.replaceState({}, '', '/#reset_token=one-time-token-value-123456789')
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/auth/me')) {
+        return Promise.resolve(responseFor({ detail: 'Authentication required.' }, 401))
+      }
+      if (url.endsWith('/api/v1/auth/password-reset/confirm')) {
+        return Promise.resolve(responseFor({}, 204))
+      }
+      return Promise.resolve(defaultFetchResponse(url, init?.method ?? 'GET'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await waitFor(() =>
+      expect(screen.getByText('Choose a new password.')).toBeInTheDocument()
+    )
+
+    fireEvent.change(screen.getByLabelText('New password (at least 12 characters)'), {
+      target: { value: 'a different secure password' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Reset password' }))
+
+    await waitFor(() =>
+      expect(screen.getByText('Password reset. Sign in with your new password.')).toBeInTheDocument()
+    )
+    expect(screen.getByText('Welcome back.')).toBeInTheDocument()
+    expect(window.location.hash).toBe('')
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/v1/auth/password-reset/confirm'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          token: 'one-time-token-value-123456789',
           new_password: 'a different secure password',
         }),
       })
