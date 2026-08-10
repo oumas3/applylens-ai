@@ -4,7 +4,7 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 
 ## Current verification
 
-- Backend test suite: 111 passing tests
+- Backend test suite: 125 passing tests
 - Frontend tests and production build: passing
 
 
@@ -79,6 +79,14 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 - Provide a production Compose stack with persistent database/upload volumes and bounded container logs.
 - Document deployment, readiness checks, backups, restores, request tracing, and rollback safety.
 
+### Sprint 10 — Account security
+
+- Bound authentication database connections and reduce credential timing signals.
+- Persist source-aware login throttling with `429` and `Retry-After` responses.
+- Allow authenticated password changes with stronger new-password requirements.
+- Revoke other active sessions and rotate the current session after a password change.
+- Add a compact account-security panel and automated backend/frontend coverage.
+
 The default retrieval implementation remains local and deterministic, so the MVP
 works without external services. Production deployments can opt into OpenAI
 embeddings and PostgreSQL/pgvector using the configuration below.
@@ -106,7 +114,7 @@ docker compose up -d
 ```
 
 This starts PostgreSQL 16 with pgvector, the FastAPI service, and an Nginx-served
-production frontend. PostgreSQL automatically applies both migration files when
+production frontend. PostgreSQL automatically applies all migration files when
 its data volume is initialized. Open
 the web app at `http://localhost:8080` and the API at `http://localhost:8000`.
 

@@ -12,6 +12,7 @@ services:
       - applylens-postgres:/var/lib/postgresql/data
       - ./apps/api/migrations/001_pgvector.sql:/docker-entrypoint-initdb.d/001_pgvector.sql:ro
       - ./apps/api/migrations/002_application_data.sql:/docker-entrypoint-initdb.d/002_application_data.sql:ro
+      - ./apps/api/migrations/003_login_attempts.sql:/docker-entrypoint-initdb.d/003_login_attempts.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U applylens -d applylens"]
       interval: 5s

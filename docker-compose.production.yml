@@ -12,6 +12,7 @@ services:
       - applylens-postgres:/var/lib/postgresql/data
       - ./apps/api/migrations/001_pgvector.sql:/docker-entrypoint-initdb.d/001_pgvector.sql:ro
       - ./apps/api/migrations/002_application_data.sql:/docker-entrypoint-initdb.d/002_application_data.sql:ro
+      - ./apps/api/migrations/003_login_attempts.sql:/docker-entrypoint-initdb.d/003_login_attempts.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
@@ -31,6 +32,7 @@ services:
       WEB_ORIGIN: ${WEB_ORIGIN:?Set the public HTTPS frontend origin}
       DATABASE_URL: ${DATABASE_URL:?Set the PostgreSQL connection URL}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
+      FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
       RETRIEVAL_PROVIDER: ${RETRIEVAL_PROVIDER:-lexical}
       RETRIEVAL_STORAGE: ${RETRIEVAL_STORAGE:-memory}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}

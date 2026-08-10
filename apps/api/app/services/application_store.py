@@ -56,13 +56,26 @@ class PostgresApplicationStore:
                 """
                 SELECT to_regclass('public.users') AS users,
                        to_regclass('public.sessions') AS sessions,
+                       to_regclass('public.login_attempts') AS login_attempts,
                        to_regclass('public.documents') AS documents,
                        to_regclass('public.opportunities') AS opportunities,
                        to_regclass('public.reviews') AS reviews,
                        to_regclass('public.tasks') AS tasks
                 """
             ).fetchone()
-            missing = [name for name in ("users", "sessions", "documents", "opportunities", "reviews", "tasks") if not row or row[name] is None]
+            missing = [
+                name
+                for name in (
+                    "users",
+                    "sessions",
+                    "login_attempts",
+                    "documents",
+                    "opportunities",
+                    "reviews",
+                    "tasks",
+                )
+                if not row or row[name] is None
+            ]
             if missing:
                 raise RuntimeError(
                     "Application database schema is missing: " + ", ".join(missing)

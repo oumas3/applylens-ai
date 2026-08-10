@@ -96,6 +96,11 @@ export default function App() {
   const [authEmail, setAuthEmail] = useState('')
   const [authPassword, setAuthPassword] = useState('')
   const [authStatus, setAuthStatus] = useState('Sign in to access your private workspace.')
+  const [showSecurity, setShowSecurity] = useState(false)
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [securityStatus, setSecurityStatus] = useState('')
+  const [changingPassword, setChangingPassword] = useState(false)
   const [apiStatus, setApiStatus] = useState('CONNECTING TO API...')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -196,7 +201,41 @@ export default function App() {
   async function handleLogout() {
     await apiFetch(`${API_URL}/api/v1/auth/logout`, { method: 'POST' })
     setAuthUser(null)
+    setShowSecurity(false)
+    setCurrentPassword('')
+    setNewPassword('')
+    setSecurityStatus('')
     setAuthStatus('You have been signed out.')
+  }
+
+  async function handlePasswordChange(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setChangingPassword(true)
+    setSecurityStatus('Updating your password...')
+
+    try {
+      const response = await apiFetch(`${API_URL}/api/v1/auth/password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.detail ?? 'Unable to update your password.')
+      }
+      setCurrentPassword('')
+      setNewPassword('')
+      setSecurityStatus('Password updated. Other signed-in devices were disconnected.')
+    } catch (error) {
+      setSecurityStatus(
+        error instanceof Error ? error.message : 'Unable to update your password.'
+      )
+    } finally {
+      setChangingPassword(false)
+    }
   }
 
   useEffect(() => {
@@ -732,11 +771,11 @@ async function handlePreviewText(
           <form className="analysis-form" onSubmit={handleAuthSubmit}>
             <label className="upload-field">
               <span>Email</span>
-              <input type="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} required />
+              <input type="email" autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} required />
             </label>
             <label className="upload-field">
               <span>Password</span>
-              <input type="password" minLength={8} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} required />
+              <input type="password" autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} minLength={8} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} required />
             </label>
             <button type="submit">{authMode === 'login' ? 'Sign in' : 'Create account'}</button>
           </form>
@@ -757,9 +796,56 @@ async function handlePreviewText(
         </strong>
         <div className="actions">
           <span className="muted">{authUser.email}</span>
+          <button
+            className="ghost"
+            type="button"
+            aria-expanded={showSecurity}
+            onClick={() => setShowSecurity((current) => !current)}
+          >
+            Security
+          </button>
           <button className="ghost" type="button" onClick={handleLogout}>Sign out</button>
         </div>
       </nav>
+
+      {showSecurity && (
+        <section className="security-panel" aria-labelledby="security-heading">
+          <div>
+            <p className="eyebrow">ACCOUNT SECURITY</p>
+            <h2 id="security-heading">Change your password</h2>
+            <p className="analysis-status">
+              Updating it signs out every other active session on your account.
+            </p>
+          </div>
+          <form className="security-form" onSubmit={handlePasswordChange}>
+            <label className="upload-field">
+              <span>Current password</span>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+                required
+              />
+            </label>
+            <label className="upload-field">
+              <span>New password (at least 12 characters)</span>
+              <input
+                type="password"
+                autoComplete="new-password"
+                minLength={12}
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                required
+              />
+            </label>
+            <button type="submit" disabled={changingPassword}>
+              {changingPassword ? 'Updating...' : 'Update password'}
+            </button>
+            {securityStatus && <p className="analysis-status">{securityStatus}</p>}
+          </form>
+        </section>
+      )}
 
       <section className="hero">
         <div>

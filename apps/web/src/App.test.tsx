@@ -127,4 +127,43 @@ describe('ApplyLens UI', () => {
       expect.objectContaining({ method: 'POST' })
     )
   })
+
+  it('changes the password from the account security panel', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/auth/password')) {
+        return Promise.resolve(responseFor({}, 204))
+      }
+      return Promise.resolve(defaultFetchResponse(url, init?.method ?? 'GET'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await waitFor(() => expect(screen.getByText(/API CONNECTED/)).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Security' }))
+    fireEvent.change(screen.getByLabelText('Current password'), {
+      target: { value: 'correct horse battery' },
+    })
+    fireEvent.change(screen.getByLabelText('New password (at least 12 characters)'), {
+      target: { value: 'a different secure password' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Update password' }))
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Password updated. Other signed-in devices were disconnected.')
+      ).toBeInTheDocument()
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/v1/auth/password'),
+      expect.objectContaining({
+        method: 'POST',
+        body: JSON.stringify({
+          current_password: 'correct horse battery',
+          new_password: 'a different secure password',
+        }),
+      })
+    )
+  })
 })

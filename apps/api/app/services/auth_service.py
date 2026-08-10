@@ -3,12 +3,22 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 import hashlib
 import hmac
+import math
 from pathlib import Path
 import secrets
 import sqlite3
 
 
 SESSION_MAX_AGE_SECONDS = 60 * 60 * 24 * 30
+DATABASE_CONNECT_TIMEOUT_SECONDS = 3
+DUMMY_PASSWORD_HASH = (
+    "pbkdf2_sha256$310000$00000000000000000000000000000000$"
+    "0000000000000000000000000000000000000000000000000000000000000000"
+)
+LOGIN_ATTEMPT_LIMIT = 5
+LOGIN_ATTEMPT_WINDOW_SECONDS = 15 * 60
+LOGIN_BLOCK_SECONDS = 15 * 60
+LOGIN_ATTEMPT_RETENTION_SECONDS = LOGIN_ATTEMPT_WINDOW_SECONDS + LOGIN_BLOCK_SECONDS
 
 
 class AuthService:
@@ -30,7 +40,11 @@ class AuthService:
             from psycopg.rows import dict_row
         except ImportError as error:
             raise RuntimeError("psycopg is required for PostgreSQL authentication.") from error
-        return psycopg.connect(self.database_url, row_factory=dict_row)
+        return psycopg.connect(
+            self.database_url,
+            row_factory=dict_row,
+            connect_timeout=DATABASE_CONNECT_TIMEOUT_SECONDS,
+        )
 
     def _initialize(self) -> None:
         with self._connect() as connection:
@@ -50,8 +64,190 @@ class AuthService:
                     created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
+                CREATE TABLE IF NOT EXISTS login_attempts (
+                    attempt_key TEXT PRIMARY KEY,
+                    failed_attempts INTEGER NOT NULL,
+                    window_started TEXT NOT NULL,
+                    blocked_until TEXT
+                );
+                CREATE INDEX IF NOT EXISTS login_attempts_window_started_idx
+                    ON login_attempts (window_started);
                 """
             )
+
+    @staticmethod
+    def _as_utc_datetime(value: datetime | str | None) -> datetime | None:
+        if value is None:
+            return None
+        parsed = datetime.fromisoformat(value) if isinstance(value, str) else value
+        if parsed.tzinfo is None:
+            parsed = parsed.replace(tzinfo=timezone.utc)
+        return parsed.astimezone(timezone.utc)
+
+    @staticmethod
+    def _retry_after_seconds(blocked_until: datetime, now: datetime) -> int:
+        return max(1, math.ceil((blocked_until - now).total_seconds()))
+
+    @staticmethod
+    def login_attempt_key(email: str, client_address: str | None) -> str:
+        identity = f"{email.lower()}\0{client_address or 'unknown'}"
+        return hashlib.sha256(identity.encode("utf-8")).hexdigest()
+
+    def _login_attempt_row(self, connection, attempt_key: str, *, postgres: bool):
+        placeholder = "%s" if postgres else "?"
+        return connection.execute(
+            f"""
+            SELECT failed_attempts, window_started, blocked_until
+            FROM login_attempts
+            WHERE attempt_key = {placeholder}
+            """,
+            (attempt_key,),
+        ).fetchone()
+
+    @staticmethod
+    def _cleanup_login_attempts(
+        connection,
+        *,
+        postgres: bool,
+        now: datetime,
+    ) -> None:
+        placeholder = "%s" if postgres else "?"
+        cutoff = now - timedelta(seconds=LOGIN_ATTEMPT_RETENTION_SECONDS)
+        connection.execute(
+            f"""
+            DELETE FROM login_attempts
+            WHERE window_started < {placeholder}
+              AND (blocked_until IS NULL OR blocked_until < {placeholder})
+            """,
+            (cutoff.isoformat(), now.isoformat()),
+        )
+
+    def login_retry_after(
+        self,
+        attempt_key: str,
+        *,
+        now: datetime | None = None,
+    ) -> int | None:
+        current_time = now or datetime.now(timezone.utc)
+        if self.database_url:
+            with self._postgres() as connection:
+                row = self._login_attempt_row(connection, attempt_key, postgres=True)
+        else:
+            with self._connect() as connection:
+                row = self._login_attempt_row(connection, attempt_key, postgres=False)
+        if row is None:
+            return None
+        blocked_until = self._as_utc_datetime(row["blocked_until"])
+        if blocked_until is None or blocked_until <= current_time:
+            return None
+        return self._retry_after_seconds(blocked_until, current_time)
+
+    def record_failed_login(
+        self,
+        attempt_key: str,
+        *,
+        now: datetime | None = None,
+    ) -> int | None:
+        current_time = now or datetime.now(timezone.utc)
+        if self.database_url:
+            with self._postgres() as connection:
+                self._cleanup_login_attempts(
+                    connection,
+                    postgres=True,
+                    now=current_time,
+                )
+                connection.execute(
+                    "SELECT pg_advisory_xact_lock(hashtext(%s))",
+                    (attempt_key,),
+                )
+                row = self._login_attempt_row(connection, attempt_key, postgres=True)
+                values = self._next_login_attempt(row, current_time)
+                connection.execute(
+                    """
+                    INSERT INTO login_attempts (
+                        attempt_key, failed_attempts, window_started, blocked_until
+                    ) VALUES (%s, %s, %s, %s)
+                    ON CONFLICT (attempt_key) DO UPDATE SET
+                        failed_attempts = EXCLUDED.failed_attempts,
+                        window_started = EXCLUDED.window_started,
+                        blocked_until = EXCLUDED.blocked_until
+                    """,
+                    (attempt_key, *values),
+                )
+        else:
+            with self._connect() as connection:
+                self._cleanup_login_attempts(
+                    connection,
+                    postgres=False,
+                    now=current_time,
+                )
+                row = self._login_attempt_row(connection, attempt_key, postgres=False)
+                values = self._next_login_attempt(row, current_time)
+                connection.execute(
+                    """
+                    INSERT INTO login_attempts (
+                        attempt_key, failed_attempts, window_started, blocked_until
+                    ) VALUES (?, ?, ?, ?)
+                    ON CONFLICT(attempt_key) DO UPDATE SET
+                        failed_attempts = excluded.failed_attempts,
+                        window_started = excluded.window_started,
+                        blocked_until = excluded.blocked_until
+                    """,
+                    (attempt_key, *values),
+                )
+        blocked_until = self._as_utc_datetime(values[2])
+        if blocked_until is None:
+            return None
+        return self._retry_after_seconds(blocked_until, current_time)
+
+    @classmethod
+    def _next_login_attempt(
+        cls,
+        row,
+        now: datetime,
+    ) -> tuple[int, str, str | None]:
+        window_started = (
+            cls._as_utc_datetime(row["window_started"])
+            if row is not None
+            else None
+        )
+        blocked_until = (
+            cls._as_utc_datetime(row["blocked_until"])
+            if row is not None
+            else None
+        )
+        if blocked_until is not None and blocked_until > now:
+            return int(row["failed_attempts"]), window_started.isoformat(), blocked_until.isoformat()
+        window_expired = (
+            window_started is None
+            or window_started + timedelta(seconds=LOGIN_ATTEMPT_WINDOW_SECONDS) <= now
+        )
+        failed_attempts = 1 if window_expired else int(row["failed_attempts"]) + 1
+        active_window_start = now if window_expired else window_started
+        next_blocked_until = (
+            now + timedelta(seconds=LOGIN_BLOCK_SECONDS)
+            if failed_attempts >= LOGIN_ATTEMPT_LIMIT
+            else None
+        )
+        return (
+            failed_attempts,
+            active_window_start.isoformat(),
+            next_blocked_until.isoformat() if next_blocked_until else None,
+        )
+
+    def clear_login_failures(self, attempt_key: str) -> None:
+        if self.database_url:
+            with self._postgres() as connection:
+                connection.execute(
+                    "DELETE FROM login_attempts WHERE attempt_key = %s",
+                    (attempt_key,),
+                )
+        else:
+            with self._connect() as connection:
+                connection.execute(
+                    "DELETE FROM login_attempts WHERE attempt_key = ?",
+                    (attempt_key,),
+                )
 
     @staticmethod
     def _hash_password(password: str) -> str:
@@ -110,7 +306,9 @@ class AuthService:
                     "SELECT id, email, password_hash, is_active FROM users WHERE email = ?",
                     (email,),
                 ).fetchone()
-        if row is None or not row["is_active"] or not self._verify_password(password, row["password_hash"]):
+        encoded_password = row["password_hash"] if row is not None else DUMMY_PASSWORD_HASH
+        password_is_valid = self._verify_password(password, encoded_password)
+        if row is None or not row["is_active"] or not password_is_valid:
             return None
         return {"id": row["id"], "email": row["email"], "is_active": bool(row["is_active"])}
 
@@ -136,6 +334,46 @@ class AuthService:
                     values,
                 )
         return session_id
+
+    def change_password(
+        self,
+        user_id: str,
+        current_password: str,
+        new_password: str,
+    ) -> bool:
+        if self.database_url:
+            with self._postgres() as connection:
+                row = connection.execute(
+                    "SELECT password_hash FROM users WHERE id = %s AND is_active = TRUE",
+                    (user_id,),
+                ).fetchone()
+                if row is None or not self._verify_password(
+                    current_password,
+                    row["password_hash"],
+                ):
+                    return False
+                connection.execute(
+                    "UPDATE users SET password_hash = %s WHERE id = %s",
+                    (self._hash_password(new_password), user_id),
+                )
+                connection.execute("DELETE FROM sessions WHERE user_id = %s", (user_id,))
+        else:
+            with self._connect() as connection:
+                row = connection.execute(
+                    "SELECT password_hash FROM users WHERE id = ? AND is_active = 1",
+                    (user_id,),
+                ).fetchone()
+                if row is None or not self._verify_password(
+                    current_password,
+                    row["password_hash"],
+                ):
+                    return False
+                connection.execute(
+                    "UPDATE users SET password_hash = ? WHERE id = ?",
+                    (self._hash_password(new_password), user_id),
+                )
+                connection.execute("DELETE FROM sessions WHERE user_id = ?", (user_id,))
+        return True
 
     def get_user_by_session(self, session_id: str) -> dict[str, str | bool] | None:
         query = """

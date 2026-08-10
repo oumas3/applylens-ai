@@ -49,7 +49,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["X-Request-ID"],
+    expose_headers=["Retry-After", "X-Request-ID"],
 )
 app.add_middleware(RequestObservabilityMiddleware, logger=request_logger)
 app.include_router(documents_router)
@@ -120,7 +120,7 @@ def readiness() -> ReadinessResponse | JSONResponse:
 def product() -> ProductInfo:
     return ProductInfo(
         name="ApplyLens AI",
-        phase="Sprint 9 — Deployment and observability",
+        phase="Sprint 10 — Account security",
         supported_opportunities=["Master's", "PhD"],
         promise="Every decision is backed by evidence or marked unclear.",
     )

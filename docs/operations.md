@@ -5,21 +5,30 @@
 1. Copy `deploy/production.env.example` to a secure file outside the repository.
 2. Replace the database password and both public HTTPS URLs. URL-encode special characters in `DATABASE_URL`.
 3. Put an HTTPS reverse proxy or load balancer in front of the web and API ports. They bind to `127.0.0.1` by default; change `BIND_ADDRESS` only when the host network is protected appropriately.
-4. Validate the deployment configuration:
+4. Set `FORWARDED_ALLOW_IPS` to the proxy address or CIDR seen by the API container. Login throttling uses the trusted client address. Do not use `*` when untrusted clients can reach the API directly.
+5. Validate the deployment configuration:
 
    ```powershell
    docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml config
    ```
 
-5. Start or update the stack:
+6. Start or update the stack:
 
    ```powershell
    docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml up -d --build
    ```
 
-6. Confirm `GET /health` returns `200` and `GET /health/ready` reports every configured dependency as `ok`.
+7. Confirm `GET /health` returns `200` and `GET /health/ready` reports every configured dependency as `ok`.
 
 PostgreSQL initialization scripts run only when the database volume is first created. For an existing database, apply new migration SQL explicitly before deploying the API that depends on it.
+
+For Sprint 10, apply the idempotent login-throttling migration to an existing database before updating the API:
+
+```powershell
+docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml exec -T postgres psql -U applylens -d applylens -f /docker-entrypoint-initdb.d/003_login_attempts.sql
+```
+
+Adjust the database user and name if the production environment overrides their defaults.
 
 ## Logs and request tracing
 

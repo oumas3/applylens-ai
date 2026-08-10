@@ -2,6 +2,9 @@ from pathlib import Path
 
 
 MIGRATION = Path(__file__).resolve().parents[1] / "migrations" / "002_application_data.sql"
+LOGIN_ATTEMPTS_MIGRATION = (
+    Path(__file__).resolve().parents[1] / "migrations" / "003_login_attempts.sql"
+)
 
 
 def test_application_data_migration_defines_required_tables_and_indexes() -> None:
@@ -24,3 +27,12 @@ def test_application_data_migration_enforces_user_ownership() -> None:
 
     assert "user_id text not null references users(id) on delete cascade" in sql
     assert "primary key (user_id, id)" in sql
+
+
+def test_login_attempt_migration_is_idempotent_and_indexed() -> None:
+    sql = LOGIN_ATTEMPTS_MIGRATION.read_text(encoding="utf-8").lower()
+
+    assert "create table if not exists login_attempts" in sql
+    assert "attempt_key text primary key" in sql
+    assert "create index if not exists login_attempts_blocked_until_idx" in sql
+    assert "create index if not exists login_attempts_window_started_idx" in sql

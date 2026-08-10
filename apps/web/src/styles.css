@@ -151,3 +151,35 @@
   align-items: start;
   padding-top: 36px;
 }
+
+.security-panel {
+  display: grid;
+  grid-template-columns: minmax(0, 0.7fr) minmax(320px, 1fr);
+  gap: 24px;
+  padding: 24px max(6vw, 24px);
+  border-bottom: 1px solid #e4e7f0;
+  background: #fff;
+}
+
+.security-panel h2 {
+  margin: 6px 0 0;
+}
+
+.security-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: end;
+}
+
+.security-form .analysis-status {
+  grid-column: 1 / -1;
+  margin: 0;
+}
+
+@media (max-width: 800px) {
+  .security-panel,
+  .security-form {
+    grid-template-columns: 1fr;
+  }
+}

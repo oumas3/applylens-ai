@@ -1,6 +1,7 @@
+import hmac
 from typing import Annotated
 
-from fastapi import APIRouter, Cookie, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Cookie, Depends, HTTPException, Request, Response, status
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.config import get_settings
@@ -24,9 +25,27 @@ class UserResponse(BaseModel):
     is_active: bool
 
 
+class PasswordChangeRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    current_password: str = Field(..., min_length=1, max_length=128)
+    new_password: str = Field(..., min_length=12, max_length=128)
+
+
 def get_auth_service() -> AuthService:
     settings = get_settings()
     return AuthService(settings.auth_database_path, settings.database_url)
+
+
+def set_session_cookie(response: Response, session_id: str) -> None:
+    response.set_cookie(
+        SESSION_COOKIE,
+        session_id,
+        max_age=SESSION_MAX_AGE_SECONDS,
+        httponly=True,
+        secure=get_settings().app_env == "production",
+        samesite="lax",
+    )
 
 
 def get_current_user(
@@ -50,20 +69,61 @@ def register(request: AuthRequest) -> UserResponse:
 
 
 @router.post("/login", response_model=UserResponse)
-def login(request: AuthRequest, response: Response) -> UserResponse:
+def login(
+    credentials: AuthRequest,
+    http_request: Request,
+    response: Response,
+) -> UserResponse:
     service = get_auth_service()
-    user = service.authenticate(request.email.lower(), request.password)
-    if user is None:
-        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
-    response.set_cookie(
-        SESSION_COOKIE,
-        service.create_session(str(user["id"])),
-        max_age=SESSION_MAX_AGE_SECONDS,
-        httponly=True,
-        secure=get_settings().app_env == "production",
-        samesite="lax",
+    email = credentials.email.lower()
+    attempt_key = service.login_attempt_key(
+        email,
+        http_request.client.host if http_request.client else None,
     )
+    retry_after = service.login_retry_after(attempt_key)
+    if retry_after is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Try again later.",
+            headers={"Retry-After": str(retry_after)},
+        )
+    user = service.authenticate(email, credentials.password)
+    if user is None:
+        retry_after = service.record_failed_login(attempt_key)
+        if retry_after is not None:
+            raise HTTPException(
+                status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+                detail="Too many failed login attempts. Try again later.",
+                headers={"Retry-After": str(retry_after)},
+            )
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid email or password.")
+    service.clear_login_failures(attempt_key)
+    set_session_cookie(response, service.create_session(str(user["id"])))
     return UserResponse.model_validate(user)
+
+
+@router.post("/password", status_code=status.HTTP_204_NO_CONTENT)
+def change_password(
+    request: PasswordChangeRequest,
+    response: Response,
+    user: dict[str, str | bool] = Depends(get_current_user),
+) -> None:
+    if hmac.compare_digest(request.current_password, request.new_password):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The new password must be different from the current password.",
+        )
+    service = get_auth_service()
+    if not service.change_password(
+        str(user["id"]),
+        request.current_password,
+        request.new_password,
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="The current password is incorrect.",
+        )
+    set_session_cookie(response, service.create_session(str(user["id"])))
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
