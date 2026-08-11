@@ -1,0 +1,33 @@
+name: applylens-staging
+
+services:
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      STAGING_WEB_HOST: ${STAGING_WEB_HOST:?Set the public staging web hostname}
+      STAGING_API_HOST: ${STAGING_API_HOST:?Set the public staging API hostname}
+      TLS_EMAIL: ${TLS_EMAIL:?Set the certificate notification email}
+    ports:
+      - "${PUBLIC_HTTP_PORT:-80}:80"
+      - "${PUBLIC_HTTPS_PORT:-443}:443"
+      - "${PUBLIC_HTTPS_PORT:-443}:443/udp"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - applylens-caddy-data:/data
+      - applylens-caddy-config:/config
+    depends_on:
+      api:
+        condition: service_healthy
+      web:
+        condition: service_started
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  applylens-caddy-data:
+  applylens-caddy-config:

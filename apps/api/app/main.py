@@ -120,7 +120,7 @@ def readiness() -> ReadinessResponse | JSONResponse:
 def product() -> ProductInfo:
     return ProductInfo(
         name="ApplyLens AI",
-        phase="Sprint 11 — Account recovery",
+        phase="Sprint 12 — Staging deployment preparation",
         supported_opportunities=["Master's", "PhD"],
         promise="Every decision is backed by evidence or marked unclear.",
     )

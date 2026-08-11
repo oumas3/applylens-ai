@@ -1,5 +1,10 @@
 # ApplyLens production operations
 
+For the first public staging environment, follow
+[`staging-deployment.md`](staging-deployment.md). It adds automatic HTTPS,
+provider-neutral DNS guidance, public smoke checks, and explicit go/no-go
+criteria on top of the production procedures below.
+
 ## Deployment
 
 1. Copy `deploy/production.env.example` to a secure file outside the repository.
@@ -19,6 +24,13 @@
    ```
 
 7. Confirm `GET /health` returns `200` and `GET /health/ready` reports every configured dependency as `ok`.
+
+The repository includes a non-destructive public check for these endpoints and
+the frontend application shell:
+
+```powershell
+python deploy/smoke_test.py --web-url https://app.example.com --api-url https://api.example.com
+```
 
 PostgreSQL initialization scripts run only when the database volume is first created. For an existing database, apply new migration SQL explicitly before deploying the API that depends on it.
 

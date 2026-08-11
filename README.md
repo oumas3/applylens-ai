@@ -5,6 +5,7 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 ## Current verification
 
 - Backend test suite: 139 passing tests
+- Deployment smoke-check suite: 6 passing tests
 - Frontend tests and production build: passing
 
 
@@ -95,6 +96,16 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 - Revoke every active session after a successful reset.
 - Provide compact forgot-password and reset-password screens with automated coverage.
 
+### Sprint 12 — Staging deployment preparation
+
+- Reuse the production stack behind a Caddy HTTPS reverse proxy.
+- Keep database, uploads, and TLS state in separate persistent volumes.
+- Validate public API liveness, dependency readiness, request tracing, and the
+  frontend shell with a non-destructive smoke-test command.
+- Validate production/staging Compose and proxy configuration in CI.
+- Document DNS, secrets, migrations, SMTP, acceptance testing, backups,
+  restoration, and rollback as a repeatable staging runbook.
+
 The default retrieval implementation remains local and deterministic, so the MVP
 works without external services. Production deployments can opt into OpenAI
 embeddings and PostgreSQL/pgvector using the configuration below.
@@ -166,6 +177,9 @@ checks configured runtime dependencies.
 For production deployment and recovery procedures, see
 [`docs/operations.md`](docs/operations.md). Start from
 `deploy/production.env.example`; never commit the populated production environment file.
+For the first HTTPS staging environment, follow
+[`docs/staging-deployment.md`](docs/staging-deployment.md) and start from
+`deploy/staging.env.example`.
 
 ## MVP boundary
 

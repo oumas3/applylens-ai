@@ -41,6 +41,10 @@ jobs:
       - name: Run backend tests
         run: python -m pytest tests -q
 
+      - name: Run deployment smoke-check tests
+        working-directory: .
+        run: python -m unittest deploy.test_smoke_test -v
+
   frontend:
     name: Frontend build
     runs-on: ubuntu-latest
@@ -70,6 +74,19 @@ jobs:
   containers:
     name: Container builds
     runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: ci-placeholder
+      DATABASE_URL: postgresql://applylens:ci-placeholder@postgres:5432/applylens
+      WEB_ORIGIN: https://staging.example.com
+      PUBLIC_API_URL: https://api.staging.example.com
+      EMAIL_DELIVERY: smtp
+      SMTP_HOST: smtp.example.com
+      SMTP_USERNAME: ci-placeholder
+      SMTP_PASSWORD: ci-placeholder
+      SMTP_FROM_EMAIL: support@example.com
+      STAGING_WEB_HOST: staging.example.com
+      STAGING_API_HOST: api.staging.example.com
+      TLS_EMAIL: operations@example.com
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -78,20 +95,23 @@ jobs:
         run: docker compose config
 
       - name: Validate production Compose configuration
-        env:
-          POSTGRES_PASSWORD: ci-placeholder
-          DATABASE_URL: postgresql://applylens:ci-placeholder@postgres:5432/applylens
-          WEB_ORIGIN: https://app.example.com
-          PUBLIC_API_URL: https://api.example.com
         run: docker compose -f docker-compose.production.yml config
+
+      - name: Validate staging Compose configuration
+        run: docker compose -f docker-compose.production.yml -f docker-compose.staging.yml config
+
+      - name: Validate staging HTTPS proxy configuration
+        run: >-
+          docker run --rm
+          -v "${{ github.workspace }}/deploy/Caddyfile:/etc/caddy/Caddyfile:ro"
+          -e STAGING_WEB_HOST
+          -e STAGING_API_HOST
+          -e TLS_EMAIL
+          caddy:2-alpine
+          caddy validate --config /etc/caddy/Caddyfile
 
       - name: Build API and frontend images
         run: docker compose build api web
 
       - name: Build production API and frontend images
-        env:
-          POSTGRES_PASSWORD: ci-placeholder
-          DATABASE_URL: postgresql://applylens:ci-placeholder@postgres:5432/applylens
-          WEB_ORIGIN: https://app.example.com
-          PUBLIC_API_URL: https://api.example.com
         run: docker compose -f docker-compose.production.yml build api web
