@@ -30,6 +30,7 @@ class UserResponse(BaseModel):
     id: str
     email: EmailStr
     is_active: bool
+    external_ai_consent: bool = False
 
 
 class PasswordChangeRequest(BaseModel):
@@ -95,11 +96,13 @@ def get_current_user(
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register(request: AuthRequest) -> UserResponse:
+def register(request: AuthRequest, response: Response) -> UserResponse:
+    service = get_auth_service()
     try:
-        user = get_auth_service().create_user(request.email.lower(), request.password)
+        user = service.create_user(request.email.lower(), request.password)
     except ValueError as error:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(error)) from error
+    set_session_cookie(response, service.create_session(str(user["id"])))
     return UserResponse.model_validate(user)
 
 

@@ -34,6 +34,7 @@ class AuthService:
     def _connect(self) -> sqlite3.Connection:
         connection = sqlite3.connect(self.database_path)
         connection.row_factory = sqlite3.Row
+        connection.execute("PRAGMA foreign_keys = ON")
         return connection
 
     def _postgres(self):
@@ -57,6 +58,7 @@ class AuthService:
                     email TEXT NOT NULL UNIQUE,
                     password_hash TEXT NOT NULL,
                     is_active INTEGER NOT NULL DEFAULT 1,
+                    external_ai_consent INTEGER NOT NULL DEFAULT 0,
                     created_at TEXT NOT NULL
                 );
                 CREATE TABLE IF NOT EXISTS sessions (
@@ -86,6 +88,14 @@ class AuthService:
                     ON password_reset_tokens (expires_at);
                 """
             )
+            user_columns = {
+                row["name"]
+                for row in connection.execute("PRAGMA table_info(users)").fetchall()
+            }
+            if "external_ai_consent" not in user_columns:
+                connection.execute(
+                    "ALTER TABLE users ADD COLUMN external_ai_consent INTEGER NOT NULL DEFAULT 0"
+                )
 
     @staticmethod
     def _as_utc_datetime(value: datetime | str | None) -> datetime | None:
@@ -303,26 +313,42 @@ class AuthService:
             if not isinstance(error, sqlite3.IntegrityError) and "duplicate key" not in str(error).lower():
                 raise
             raise ValueError("An account with this email already exists.") from error
-        return {"id": user_id, "email": email, "is_active": True}
+        return {
+            "id": user_id,
+            "email": email,
+            "is_active": True,
+            "external_ai_consent": False,
+        }
 
     def authenticate(self, email: str, password: str) -> dict[str, str | bool] | None:
         if self.database_url:
             with self._postgres() as connection:
                 row = connection.execute(
-                    "SELECT id, email, password_hash, is_active FROM users WHERE email = %s",
+                    """
+                    SELECT id, email, password_hash, is_active, external_ai_consent
+                    FROM users WHERE email = %s
+                    """,
                     (email,),
                 ).fetchone()
         else:
             with self._connect() as connection:
                 row = connection.execute(
-                    "SELECT id, email, password_hash, is_active FROM users WHERE email = ?",
+                    """
+                    SELECT id, email, password_hash, is_active, external_ai_consent
+                    FROM users WHERE email = ?
+                    """,
                     (email,),
                 ).fetchone()
         encoded_password = row["password_hash"] if row is not None else DUMMY_PASSWORD_HASH
         password_is_valid = self._verify_password(password, encoded_password)
         if row is None or not row["is_active"] or not password_is_valid:
             return None
-        return {"id": row["id"], "email": row["email"], "is_active": bool(row["is_active"])}
+        return {
+            "id": row["id"],
+            "email": row["email"],
+            "is_active": bool(row["is_active"]),
+            "external_ai_consent": bool(row["external_ai_consent"]),
+        }
 
     def create_session(self, user_id: str) -> str:
         session_id = secrets.token_urlsafe(32)
@@ -569,9 +595,98 @@ class AuthService:
                 )
         return True
 
+    def get_account(self, user_id: str) -> dict[str, object] | None:
+        """Return the portable, non-secret fields stored for one account."""
+        query = """
+            SELECT id, email, is_active, external_ai_consent, created_at
+            FROM users
+            WHERE id = ?
+        """
+        if self.database_url:
+            with self._postgres() as connection:
+                row = connection.execute(
+                    query.replace("?", "%s"),
+                    (user_id,),
+                ).fetchone()
+        else:
+            with self._connect() as connection:
+                row = connection.execute(query, (user_id,)).fetchone()
+        if row is None:
+            return None
+        created_at = row["created_at"]
+        return {
+            "id": row["id"],
+            "email": row["email"],
+            "is_active": bool(row["is_active"]),
+            "external_ai_consent": bool(row["external_ai_consent"]),
+            "created_at": (
+                created_at.isoformat()
+                if isinstance(created_at, datetime)
+                else str(created_at)
+            ),
+        }
+
+    def set_external_ai_consent(self, user_id: str, consent: bool) -> bool:
+        value = consent if self.database_url else int(consent)
+        if self.database_url:
+            with self._postgres() as connection:
+                cursor = connection.execute(
+                    "UPDATE users SET external_ai_consent = %s WHERE id = %s AND is_active = TRUE",
+                    (value, user_id),
+                )
+        else:
+            with self._connect() as connection:
+                cursor = connection.execute(
+                    "UPDATE users SET external_ai_consent = ? WHERE id = ? AND is_active = 1",
+                    (value, user_id),
+                )
+        return cursor.rowcount == 1
+
+    def verify_user_password(self, user_id: str, password: str) -> bool:
+        if self.database_url:
+            with self._postgres() as connection:
+                row = connection.execute(
+                    "SELECT password_hash FROM users WHERE id = %s AND is_active = TRUE",
+                    (user_id,),
+                ).fetchone()
+        else:
+            with self._connect() as connection:
+                row = connection.execute(
+                    "SELECT password_hash FROM users WHERE id = ? AND is_active = 1",
+                    (user_id,),
+                ).fetchone()
+        encoded = row["password_hash"] if row is not None else DUMMY_PASSWORD_HASH
+        return row is not None and self._verify_password(password, encoded)
+
+    def delete_user(self, user_id: str) -> bool:
+        """Delete an account and PostgreSQL vector rows owned through opportunities."""
+        if self.database_url:
+            with self._postgres() as connection:
+                connection.execute(
+                    """
+                    DELETE FROM opportunity_chunks
+                    WHERE opportunity_id IN (
+                        SELECT id FROM opportunities WHERE user_id = %s
+                    )
+                    """,
+                    (user_id,),
+                )
+                cursor = connection.execute(
+                    "DELETE FROM users WHERE id = %s",
+                    (user_id,),
+                )
+        else:
+            with self._connect() as connection:
+                cursor = connection.execute(
+                    "DELETE FROM users WHERE id = ?",
+                    (user_id,),
+                )
+        return cursor.rowcount == 1
+
     def get_user_by_session(self, session_id: str) -> dict[str, str | bool] | None:
         query = """
-                SELECT users.id, users.email, users.is_active, sessions.expires_at
+                SELECT users.id, users.email, users.is_active,
+                       users.external_ai_consent, sessions.expires_at
                 FROM sessions JOIN users ON users.id = sessions.user_id
                 WHERE sessions.id = ?
                 """
@@ -583,7 +698,8 @@ class AuthService:
             with self._connect() as connection:
                 row = connection.execute(
                 """
-                SELECT users.id, users.email, users.is_active, sessions.expires_at
+                SELECT users.id, users.email, users.is_active,
+                       users.external_ai_consent, sessions.expires_at
                 FROM sessions JOIN users ON users.id = sessions.user_id
                 WHERE sessions.id = ?
                 """,
@@ -599,7 +715,12 @@ class AuthService:
         if expires_at <= datetime.now(timezone.utc):
             self.delete_session(session_id)
             return None
-        return {"id": row["id"], "email": row["email"], "is_active": True}
+        return {
+            "id": row["id"],
+            "email": row["email"],
+            "is_active": True,
+            "external_ai_consent": bool(row["external_ai_consent"]),
+        }
 
     def delete_session(self, session_id: str) -> None:
         if self.database_url:

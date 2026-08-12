@@ -24,6 +24,7 @@ def test_register_login_current_user_and_logout(auth_client: TestClient) -> None
     assert registered.status_code == 201
     assert registered.json()["email"] == "candidate@example.com"
     assert "password" not in registered.json()
+    assert "applylens_session" in registered.cookies
 
     logged_in = auth_client.post(
         "/api/v1/auth/login",

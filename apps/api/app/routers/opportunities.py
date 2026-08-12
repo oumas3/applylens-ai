@@ -586,6 +586,16 @@ def search_ingested_opportunity_evidence(
         )
 
     settings = get_settings()
+    if settings.retrieval_provider == "openai" and not bool(
+        user.get("external_ai_consent", False)
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=(
+                "External AI processing is disabled for this account. "
+                "Enable it in Privacy & data before using semantic evidence search."
+            ),
+        )
     source_hash = hashlib.sha256(
         opportunity.source_text.encode("utf-8")
     ).hexdigest()

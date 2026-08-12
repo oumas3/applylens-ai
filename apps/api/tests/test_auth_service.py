@@ -202,3 +202,20 @@ def test_unknown_email_does_not_create_a_password_reset_record(tmp_path) -> None
             "SELECT COUNT(*) FROM password_reset_tokens"
         ).fetchone()[0]
     assert count == 0
+
+
+def test_delete_user_cascades_local_sessions_and_reset_tokens(tmp_path) -> None:
+    service = AuthService(tmp_path / "auth.db")
+    user = service.create_user("candidate@example.com", "correct horse battery")
+    user_id = str(user["id"])
+    service.create_session(user_id)
+    assert service.create_password_reset_token("candidate@example.com") is not None
+
+    assert service.delete_user(user_id) is True
+
+    with service._connect() as connection:
+        assert connection.execute("SELECT COUNT(*) FROM users").fetchone()[0] == 0
+        assert connection.execute("SELECT COUNT(*) FROM sessions").fetchone()[0] == 0
+        assert connection.execute(
+            "SELECT COUNT(*) FROM password_reset_tokens"
+        ).fetchone()[0] == 0

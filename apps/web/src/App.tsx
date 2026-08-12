@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 
 const API_URL =
-  import.meta.env.VITE_API_URL ?? 'http://127.0.0.1:8000'
+  import.meta.env.VITE_API_URL ?? `${window.location.protocol}//${window.location.hostname}:8000`
 
 const apiFetch = (input: RequestInfo | URL, init: RequestInit = {}) =>
   fetch(input, { ...init, credentials: 'include' })
@@ -10,6 +10,13 @@ type AuthUser = {
   id: string
   email: string
   is_active: boolean
+  external_ai_consent: boolean
+}
+
+type PrivacyPreference = {
+  external_ai_consent: boolean
+  external_ai_configured: boolean
+  external_ai_provider?: string | null
 }
 
 type AnalysisResult = {
@@ -108,10 +115,17 @@ export default function App() {
       : 'Sign in to access your private workspace.'
   )
   const [showSecurity, setShowSecurity] = useState(false)
+  const [showPrivacy, setShowPrivacy] = useState(false)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [securityStatus, setSecurityStatus] = useState('')
   const [changingPassword, setChangingPassword] = useState(false)
+  const [privacyPreference, setPrivacyPreference] = useState<PrivacyPreference | null>(null)
+  const [privacyStatus, setPrivacyStatus] = useState('')
+  const [savingPrivacy, setSavingPrivacy] = useState(false)
+  const [deletionPassword, setDeletionPassword] = useState('')
+  const [deletionConfirmation, setDeletionConfirmation] = useState('')
+  const [deletingAccount, setDeletingAccount] = useState(false)
   const [apiStatus, setApiStatus] = useState('CONNECTING TO API...')
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [uploading, setUploading] = useState(false)
@@ -267,10 +281,100 @@ export default function App() {
     await apiFetch(`${API_URL}/api/v1/auth/logout`, { method: 'POST' })
     setAuthUser(null)
     setShowSecurity(false)
+    setShowPrivacy(false)
     setCurrentPassword('')
     setNewPassword('')
     setSecurityStatus('')
     setAuthStatus('You have been signed out.')
+  }
+
+  async function togglePrivacyPanel() {
+    const nextOpen = !showPrivacy
+    setShowPrivacy(nextOpen)
+    setShowSecurity(false)
+    if (!nextOpen || privacyPreference) return
+
+    setPrivacyStatus('Loading privacy settings...')
+    try {
+      const response = await apiFetch(`${API_URL}/api/v1/account/privacy`)
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.detail ?? 'Unable to load privacy settings.')
+      setPrivacyPreference(payload)
+      setPrivacyStatus('')
+    } catch (error) {
+      setPrivacyStatus(error instanceof Error ? error.message : 'Unable to load privacy settings.')
+    }
+  }
+
+  async function handleExternalAiConsent(consent: boolean) {
+    setSavingPrivacy(true)
+    setPrivacyStatus('Saving your choice...')
+    try {
+      const response = await apiFetch(`${API_URL}/api/v1/account/privacy`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ external_ai_consent: consent }),
+      })
+      const payload = await response.json().catch(() => null)
+      if (!response.ok) throw new Error(payload?.detail ?? 'Unable to save your choice.')
+      setPrivacyPreference(payload)
+      setAuthUser((current) => current ? { ...current, external_ai_consent: consent } : current)
+      setPrivacyStatus(consent ? 'External AI processing enabled.' : 'External AI processing disabled.')
+    } catch (error) {
+      setPrivacyStatus(error instanceof Error ? error.message : 'Unable to save your choice.')
+    } finally {
+      setSavingPrivacy(false)
+    }
+  }
+
+  async function handleAccountExport() {
+    setPrivacyStatus('Preparing your account export...')
+    try {
+      const response = await apiFetch(`${API_URL}/api/v1/account/export`)
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.detail ?? 'Unable to export your account data.')
+      }
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = url
+      link.download = 'applylens-account-export.json'
+      link.click()
+      URL.revokeObjectURL(url)
+      setPrivacyStatus('Your account export was downloaded.')
+    } catch (error) {
+      setPrivacyStatus(error instanceof Error ? error.message : 'Unable to export your account data.')
+    }
+  }
+
+  async function handleAccountDeletion(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    setDeletingAccount(true)
+    setPrivacyStatus('Permanently deleting your account...')
+    try {
+      const response = await apiFetch(`${API_URL}/api/v1/account`, {
+        method: 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          current_password: deletionPassword,
+          confirmation: deletionConfirmation,
+        }),
+      })
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null)
+        throw new Error(payload?.detail ?? 'Unable to delete your account.')
+      }
+      setAuthUser(null)
+      setShowPrivacy(false)
+      setDeletionPassword('')
+      setDeletionConfirmation('')
+      setAuthStatus('Your account and stored data were permanently deleted.')
+    } catch (error) {
+      setPrivacyStatus(error instanceof Error ? error.message : 'Unable to delete your account.')
+    } finally {
+      setDeletingAccount(false)
+    }
   }
 
   async function handlePasswordChange(event: FormEvent<HTMLFormElement>) {
@@ -351,8 +455,8 @@ export default function App() {
   }
 
   useEffect(() => {
-    void loadDocuments()
-  }, [])
+    if (authUser) void loadDocuments()
+  }, [authUser?.id])
 
   async function loadTasks() {
     setTasksLoading(true)
@@ -397,8 +501,8 @@ export default function App() {
   }
 
   useEffect(() => {
-    void loadTasks()
-  }, [])
+    if (authUser) void loadTasks()
+  }, [authUser?.id])
 
   async function loadReviews() {
     setReviewsLoading(true)
@@ -420,8 +524,8 @@ export default function App() {
   }
 
   useEffect(() => {
-    void loadReviews()
-  }, [])
+    if (authUser) void loadReviews()
+  }, [authUser?.id])
 
   async function loadIngestedOpportunities() {
     setIngestedOpportunitiesLoading(true)
@@ -443,8 +547,8 @@ export default function App() {
   }
 
   useEffect(() => {
-    void loadIngestedOpportunities()
-  }, [])
+    if (authUser) void loadIngestedOpportunities()
+  }, [authUser?.id])
 
   async function compareSelectedReviews() {
     if (selectedReviewIds.length < 2) {
@@ -870,6 +974,14 @@ async function handlePreviewText(
             </form>
           )}
           <p className="analysis-status">{authStatus}</p>
+          <div className="privacy-notice">
+            <strong>Privacy by default</strong>
+            <p>
+              Your files stay private to your account. External AI is off until you
+              explicitly enable it. ApplyLens provides decision support, not admissions
+              or legal advice, and never submits an application for you.
+            </p>
+          </div>
           <div className="auth-actions">
             {authMode === 'login' && (
               <button className="ghost" type="button" onClick={() => setAuthMode('forgot')}>
@@ -907,9 +1019,20 @@ async function handlePreviewText(
             className="ghost"
             type="button"
             aria-expanded={showSecurity}
-            onClick={() => setShowSecurity((current) => !current)}
+            onClick={() => {
+              setShowSecurity((current) => !current)
+              setShowPrivacy(false)
+            }}
           >
             Security
+          </button>
+          <button
+            className="ghost"
+            type="button"
+            aria-expanded={showPrivacy}
+            onClick={togglePrivacyPanel}
+          >
+            Privacy &amp; data
           </button>
           <button className="ghost" type="button" onClick={handleLogout}>Sign out</button>
         </div>
@@ -950,6 +1073,74 @@ async function handlePreviewText(
               {changingPassword ? 'Updating...' : 'Update password'}
             </button>
             {securityStatus && <p className="analysis-status">{securityStatus}</p>}
+          </form>
+        </section>
+      )}
+
+      {showPrivacy && (
+        <section className="privacy-panel" aria-labelledby="privacy-heading">
+          <div className="privacy-summary">
+            <p className="eyebrow">PRIVACY &amp; DATA</p>
+            <h2 id="privacy-heading">You control your account data</h2>
+            <p className="analysis-status">
+              ApplyLens stores your account, uploaded documents, extracted opportunity
+              text, reviews, and tasks. Data is kept until you delete individual records
+              or permanently delete your account.
+            </p>
+            <p className="analysis-status">
+              Local analysis stays inside ApplyLens. When external AI is configured and
+              you opt in, opportunity text and search queries may be sent to{' '}
+              {privacyPreference?.external_ai_provider ?? 'the configured AI provider'}
+              {' '}to create semantic embeddings. AI output can be incomplete, so every
+              important requirement should be checked against the original call.
+            </p>
+            <label className="consent-control">
+              <input
+                type="checkbox"
+                checked={privacyPreference?.external_ai_consent ?? authUser.external_ai_consent}
+                disabled={savingPrivacy}
+                onChange={(event) => void handleExternalAiConsent(event.target.checked)}
+              />
+              <span>Allow external AI processing for semantic evidence search</span>
+            </label>
+            {!privacyPreference?.external_ai_configured && (
+              <p className="muted">No external AI provider is active in this environment.</p>
+            )}
+            <button className="ghost" type="button" onClick={handleAccountExport}>
+              Download all my data (JSON)
+            </button>
+            {privacyStatus && <p className="analysis-status">{privacyStatus}</p>}
+          </div>
+
+          <form className="danger-zone" onSubmit={handleAccountDeletion}>
+            <p className="eyebrow">DANGER ZONE</p>
+            <h3>Permanently delete account</h3>
+            <p className="analysis-status">
+              This removes your login, sessions, documents and files, opportunities,
+              vector evidence, reviews, and tasks. This cannot be undone.
+            </p>
+            <label className="upload-field">
+              <span>Current password</span>
+              <input
+                type="password"
+                autoComplete="current-password"
+                value={deletionPassword}
+                onChange={(event) => setDeletionPassword(event.target.value)}
+                required
+              />
+            </label>
+            <label className="upload-field">
+              <span>Type DELETE to confirm</span>
+              <input
+                value={deletionConfirmation}
+                onChange={(event) => setDeletionConfirmation(event.target.value)}
+                pattern="DELETE"
+                required
+              />
+            </label>
+            <button className="danger-button" type="submit" disabled={deletingAccount}>
+              {deletingAccount ? 'Deleting...' : 'Delete my account permanently'}
+            </button>
           </form>
         </section>
       )}
@@ -1615,7 +1806,11 @@ async function handlePreviewText(
       </section>
 
       <footer className="page-footer">
-        Built by Oumaima Ouayres • Sprint 6 • Master's and PhD MVP
+        Built by Oumaima Ouayres • Sprint 13 • Master's and PhD MVP
+        <small>
+          By using ApplyLens, you remain responsible for verifying requirements and
+          submitting applications. ApplyLens does not guarantee admission or funding.
+        </small>
       </footer>
     </main>
   )

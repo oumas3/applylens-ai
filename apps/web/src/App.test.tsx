@@ -20,7 +20,12 @@ function responseFor(payload: unknown, status = 200): MockResponse {
 
 function defaultFetchResponse(url: string, method: string): MockResponse {
   if (url.endsWith('/api/v1/auth/me')) {
-    return responseFor({ id: 'test-user', email: 'test@example.com', is_active: true })
+    return responseFor({
+      id: 'test-user',
+      email: 'test@example.com',
+      is_active: true,
+      external_ai_consent: false,
+    })
   }
   if (url.endsWith('/health')) {
     return responseFor({ status: 'ok' })
@@ -163,6 +168,88 @@ describe('ApplyLens UI', () => {
         body: JSON.stringify({
           current_password: 'correct horse battery',
           new_password: 'a different secure password',
+        }),
+      })
+    )
+  })
+
+  it('loads and updates external AI consent from the privacy panel', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/account/privacy')) {
+        return Promise.resolve(
+          responseFor({
+            external_ai_consent: init?.method === 'PUT',
+            external_ai_configured: true,
+            external_ai_provider: 'OpenAI',
+          })
+        )
+      }
+      return Promise.resolve(defaultFetchResponse(url, init?.method ?? 'GET'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await waitFor(() => expect(screen.getByText(/API CONNECTED/)).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Privacy & data' }))
+
+    const consent = await screen.findByRole('checkbox', {
+      name: 'Allow external AI processing for semantic evidence search',
+    })
+    expect(consent).not.toBeChecked()
+    fireEvent.click(consent)
+
+    await waitFor(() => expect(screen.getByText('External AI processing enabled.')).toBeInTheDocument())
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/v1/account/privacy'),
+      expect.objectContaining({
+        method: 'PUT',
+        body: JSON.stringify({ external_ai_consent: true }),
+      })
+    )
+  })
+
+  it('permanently deletes the account after explicit confirmation', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/account/privacy')) {
+        return Promise.resolve(
+          responseFor({
+            external_ai_consent: false,
+            external_ai_configured: false,
+            external_ai_provider: null,
+          })
+        )
+      }
+      if (url.endsWith('/api/v1/account') && init?.method === 'DELETE') {
+        return Promise.resolve(responseFor({}, 204))
+      }
+      return Promise.resolve(defaultFetchResponse(url, init?.method ?? 'GET'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await waitFor(() => expect(screen.getByText(/API CONNECTED/)).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Privacy & data' }))
+    fireEvent.change(await screen.findByLabelText('Current password'), {
+      target: { value: 'correct horse battery' },
+    })
+    fireEvent.change(screen.getByLabelText('Type DELETE to confirm'), {
+      target: { value: 'DELETE' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Delete my account permanently' }))
+
+    await waitFor(() => expect(screen.getByText('Welcome back.')).toBeInTheDocument())
+    expect(
+      screen.getByText('Your account and stored data were permanently deleted.')
+    ).toBeInTheDocument()
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/v1/account'),
+      expect.objectContaining({
+        method: 'DELETE',
+        body: JSON.stringify({
+          current_password: 'correct horse battery',
+          confirmation: 'DELETE',
         }),
       })
     )
