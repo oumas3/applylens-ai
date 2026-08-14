@@ -71,6 +71,12 @@ type ProfileCollectionKey =
   | 'skills'
   | 'publications'
 
+function profileItemCount(profile: CandidateProfileDraft) {
+  return profile.education.length + profile.work_experience.length +
+    profile.research_experience.length + profile.languages.length +
+    profile.skills.length + profile.publications.length
+}
+
 const EMPTY_PROFILE: CandidateProfileDraft = {
   full_name: '',
   headline: '',
@@ -141,10 +147,12 @@ export default function CandidateProfilePanel({
   apiUrl,
   documents,
   documentsReady,
+  onProgressChange,
 }: {
   apiUrl: string
   documents: DocumentOption[]
   documentsReady: boolean
+  onProgressChange?: (itemCount: number) => void
 }) {
   const [profile, setProfile] = useState<CandidateProfileDraft>(EMPTY_PROFILE)
   const [loading, setLoading] = useState(true)
@@ -160,17 +168,20 @@ export default function CandidateProfilePanel({
       .then(async (response) => {
         const payload = await response.json().catch(() => null)
         if (!response.ok) throw new Error(payload?.detail ?? 'Unable to load your profile.')
-        setProfile(normalizedProfile(payload))
+        const loadedProfile = normalizedProfile(payload)
+        setProfile(loadedProfile)
+        onProgressChange?.(profileItemCount(loadedProfile))
         setStatus('Profile ready. Link claims to documents before using them as evidence.')
       })
       .catch((error) => {
         if ((error as Error).name !== 'AbortError') {
+          onProgressChange?.(0)
           setStatus(error instanceof Error ? error.message : 'Unable to load your profile.')
         }
       })
       .finally(() => setLoading(false))
     return () => controller.abort()
-  }, [apiUrl])
+  }, [apiUrl, onProgressChange])
 
   useEffect(() => {
     if (loading || !documentsReady) return
@@ -240,7 +251,9 @@ export default function CandidateProfilePanel({
             : detail?.message ?? 'Unable to save your profile.'
         )
       }
-      setProfile(normalizedProfile(payload))
+      const savedProfile = normalizedProfile(payload)
+      setProfile(savedProfile)
+      onProgressChange?.(profileItemCount(savedProfile))
       setStatus('Profile saved. Evidence-linked claims are ready for analysis.')
     } catch (error) {
       setStatus(error instanceof Error ? error.message : 'Unable to save your profile.')
@@ -261,9 +274,7 @@ export default function CandidateProfilePanel({
           </p>
         </div>
         <span className="task-count">
-          {profile.education.length + profile.work_experience.length +
-            profile.research_experience.length + profile.languages.length +
-            profile.skills.length + profile.publications.length}{' '}
+          {profileItemCount(profile)}{' '}
           profile items
         </span>
       </div>

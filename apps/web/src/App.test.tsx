@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
@@ -303,6 +303,87 @@ describe('ApplyLens UI', () => {
         document_ids: ['document-1'],
       }),
     ])
+  })
+
+  it('clears private workspace state before another account signs in', async () => {
+    let documentRequests = 0
+    let taskRequests = 0
+    let resolveFirstTaskRequest: (response: MockResponse) => void = () => undefined
+    const firstAccountDocument = {
+      id: 'private-document',
+      original_filename: 'first-account-cv.txt',
+      stored_filename: 'private-document.txt',
+      category: 'CV',
+      content_type: 'text/plain',
+      size_bytes: 100,
+      status: 'uploaded',
+      extracted_text_length: 80,
+      uploaded_at: '2026-08-14T10:00:00Z',
+    }
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/documents')) {
+        documentRequests += 1
+        if (documentRequests === 1) {
+          return Promise.resolve(responseFor([firstAccountDocument]))
+        }
+        return new Promise<MockResponse>(() => undefined)
+      }
+      if (url.endsWith('/api/v1/tasks')) {
+        taskRequests += 1
+        if (taskRequests === 1) {
+          return new Promise<MockResponse>((resolve) => {
+            resolveFirstTaskRequest = resolve
+          })
+        }
+        return Promise.resolve(responseFor([]))
+      }
+      if (url.endsWith('/api/v1/auth/logout')) {
+        return Promise.resolve(responseFor({}, 204))
+      }
+      if (url.endsWith('/api/v1/auth/login')) {
+        return Promise.resolve(
+          responseFor({
+            id: 'second-user',
+            email: 'second@example.com',
+            is_active: true,
+            external_ai_consent: false,
+          })
+        )
+      }
+      return Promise.resolve(defaultFetchResponse(url, init?.method ?? 'GET'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    expect(await screen.findByText('first-account-cv.txt')).toBeInTheDocument()
+    fireEvent.click(screen.getByRole('button', { name: 'Sign out' }))
+
+    await screen.findByText('Welcome back.')
+    fireEvent.change(screen.getByLabelText('Email'), {
+      target: { value: 'second@example.com' },
+    })
+    fireEvent.change(screen.getByLabelText('Password'), {
+      target: { value: 'second account password' },
+    })
+    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }))
+
+    await screen.findByRole('heading', { name: /Know where you qualify/i })
+    expect(screen.queryByText('first-account-cv.txt')).not.toBeInTheDocument()
+    await act(async () => {
+      resolveFirstTaskRequest(
+        responseFor([
+          {
+            id: 99,
+            opportunity_id: 'first-account-opportunity',
+            title: 'Private first-account task',
+            status: 'pending',
+          },
+        ])
+      )
+      await Promise.resolve()
+    })
+    expect(screen.queryByText('Private first-account task')).not.toBeInTheDocument()
   })
 
   it('permanently deletes the account after explicit confirmation', async () => {

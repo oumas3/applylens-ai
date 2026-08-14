@@ -6,7 +6,8 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 
 - Backend test suite: 156 passing tests
 - Deployment smoke-check suite: 6 passing tests
-- Frontend tests and production build: passing
+- Frontend test suite: 12 passing tests
+- Frontend production build: passing
 
 
 ## Project status
@@ -121,6 +122,17 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 - Automatically include only live, document-supported profile claims in eligibility analysis.
 - Edit and validate the profile through a compact, responsive React interface.
 
+### Sprint 15 — Launch onboarding and accessible workspace
+
+- Guide new users through evidence upload, profile setup, opportunity extraction,
+  eligibility review, and application tasks using real saved-workspace progress.
+- Add keyboard-visible focus, skip navigation, reduced-motion support, and
+  responsive onboarding layouts.
+- Clear private in-memory workspace data on logout and permanent account deletion
+  before another account can sign in.
+- Explain empty task and review states with direct next actions.
+- Verify onboarding progress, navigation, account switching, and the production build.
+
 The default retrieval implementation remains local and deterministic, so the MVP
 works without external services. Production deployments can opt into OpenAI
 embeddings and PostgreSQL/pgvector using the configuration below.
@@ -197,6 +209,8 @@ For production deployment and recovery procedures, see
 For the first HTTPS staging environment, follow
 [`docs/staging-deployment.md`](docs/staging-deployment.md) and start from
 `deploy/staging.env.example`.
+The remaining free-beta release gates and their required evidence are tracked in
+[`docs/free-beta-launch-checklist.md`](docs/free-beta-launch-checklist.md).
 
 ## MVP boundary
 

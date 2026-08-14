@@ -270,7 +270,7 @@ def test_product_scope() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["supported_opportunities"] == ["Master's", "PhD"]
-    assert payload["phase"] == "Sprint 14 — Evidence-linked candidate profiles"
+    assert payload["phase"] == "Sprint 15 — Launch onboarding and accessible workspace"
 
 
 def test_upload_document_accepts_valid_pdf() -> None:

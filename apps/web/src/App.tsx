@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import CandidateProfilePanel from './CandidateProfilePanel'
+import OnboardingPanel from './OnboardingPanel'
 
 const API_URL =
   import.meta.env.VITE_API_URL ?? `${window.location.protocol}//${window.location.hostname}:8000`
@@ -148,6 +149,7 @@ export default function App() {
   >([])
   const [documentsLoading, setDocumentsLoading] = useState(false)
   const [documentsReady, setDocumentsReady] = useState(false)
+  const [profileItemCount, setProfileItemCount] = useState<number | null>(null)
   const [documentCategory, setDocumentCategory] = useState('OTHER')
   const [previewText, setPreviewText] = useState('')
   const [previewTitle, setPreviewTitle] = useState('')
@@ -195,6 +197,46 @@ export default function App() {
   const [selectedReviewIds, setSelectedReviewIds] = useState<number[]>([])
   const [comparison, setComparison] = useState<ReviewComparison | null>(null)
   const [comparisonLoading, setComparisonLoading] = useState(false)
+
+  function clearWorkspaceState() {
+    setDocuments([])
+    setDocumentsLoading(false)
+    setDocumentsReady(false)
+    setProfileItemCount(null)
+    setSelectedFile(null)
+    setPreviewText('')
+    setPreviewTitle('')
+    setUploadStatus('Upload a PDF or TXT document and send it to the API.')
+    setOpportunityFile(null)
+    setOpportunityTitle('')
+    setIngestedOpportunity(null)
+    setIngestedOpportunities([])
+    setIngestedOpportunitiesLoading(false)
+    setOpportunityStatus('Upload an academic call to extract its requirements.')
+    setRetrievalQuery('')
+    setRetrievalResults([])
+    setRetrievalSearched(false)
+    setAnalysisTitle('')
+    setAnalysisInstitution('')
+    setAnalysisDegreeType('')
+    setAnalysisApplicationUrl('')
+    setAnalysisRequiredDocuments('')
+    setAnalysisRequirements('')
+    setAnalysisEvidence('')
+    setAnalysisDeadline('')
+    setAnalysisDeadlineDate('')
+    setAnalysisFunding('')
+    setAnalysisResult(null)
+    setAnalysisStatus('Add an opportunity title, requirements, and evidence to review it.')
+    setTasks([])
+    setTasksLoading(false)
+    setReviews([])
+    setReviewsLoading(false)
+    setSelectedReviewIds([])
+    setComparison(null)
+    setPrivacyPreference(null)
+    setPrivacyStatus('')
+  }
 
   useEffect(() => {
     apiFetch(`${API_URL}/api/v1/auth/me`)
@@ -281,6 +323,7 @@ export default function App() {
 
   async function handleLogout() {
     await apiFetch(`${API_URL}/api/v1/auth/logout`, { method: 'POST' })
+    clearWorkspaceState()
     setAuthUser(null)
     setShowSecurity(false)
     setShowPrivacy(false)
@@ -367,6 +410,7 @@ export default function App() {
         const payload = await response.json().catch(() => null)
         throw new Error(payload?.detail ?? 'Unable to delete your account.')
       }
+      clearWorkspaceState()
       setAuthUser(null)
       setShowPrivacy(false)
       setDeletionPassword('')
@@ -435,49 +479,56 @@ export default function App() {
     return () => controller.abort()
   }, [])
 
-  async function loadDocuments() {
+  async function loadDocuments(signal: AbortSignal) {
     setDocumentsLoading(true)
     setDocumentsReady(false)
 
     try {
-      const response = await apiFetch(`${API_URL}/api/v1/documents`)
+      const response = await apiFetch(`${API_URL}/api/v1/documents`, { signal })
 
       if (!response.ok) {
         throw new Error('Unable to load documents.')
       }
 
       const payload = await response.json()
+      if (signal.aborted) return
       setDocuments(payload)
       setDocumentsReady(true)
     } catch (error) {
-      setUploadStatus(
-        error instanceof Error ? error.message : 'Unable to load documents.'
-      )
+      if (!signal.aborted) {
+        setUploadStatus(
+          error instanceof Error ? error.message : 'Unable to load documents.'
+        )
+      }
     } finally {
-      setDocumentsLoading(false)
+      if (!signal.aborted) setDocumentsLoading(false)
     }
   }
 
   useEffect(() => {
-    if (authUser) void loadDocuments()
+    if (!authUser) return
+    const controller = new AbortController()
+    void loadDocuments(controller.signal)
+    return () => controller.abort()
   }, [authUser?.id])
 
-  async function loadTasks() {
+  async function loadTasks(signal: AbortSignal) {
     setTasksLoading(true)
 
     try {
-      const response = await apiFetch(`${API_URL}/api/v1/tasks`)
+      const response = await apiFetch(`${API_URL}/api/v1/tasks`, { signal })
 
       if (!response.ok) {
         throw new Error('Unable to load tasks.')
       }
 
       const payload = await response.json()
+      if (signal.aborted) return
       setTasks(payload)
     } catch (error) {
-      setTasks([])
+      if (!signal.aborted) setTasks([])
     } finally {
-      setTasksLoading(false)
+      if (!signal.aborted) setTasksLoading(false)
     }
   }
 
@@ -505,53 +556,69 @@ export default function App() {
   }
 
   useEffect(() => {
-    if (authUser) void loadTasks()
+    if (!authUser) return
+    const controller = new AbortController()
+    void loadTasks(controller.signal)
+    return () => controller.abort()
   }, [authUser?.id])
 
-  async function loadReviews() {
+  async function loadReviews(signal: AbortSignal) {
     setReviewsLoading(true)
 
     try {
-      const response = await apiFetch(`${API_URL}/api/v1/reviews`)
+      const response = await apiFetch(`${API_URL}/api/v1/reviews`, { signal })
 
       if (!response.ok) {
         throw new Error('Unable to load reviews.')
       }
 
       const payload = await response.json()
+      if (signal.aborted) return
       setReviews(payload)
     } catch (error) {
-      setReviews([])
+      if (!signal.aborted) setReviews([])
     } finally {
-      setReviewsLoading(false)
+      if (!signal.aborted) setReviewsLoading(false)
     }
   }
 
   useEffect(() => {
-    if (authUser) void loadReviews()
+    if (!authUser) return
+    const controller = new AbortController()
+    void loadReviews(controller.signal)
+    return () => controller.abort()
   }, [authUser?.id])
 
-  async function loadIngestedOpportunities() {
+  async function loadIngestedOpportunities(signal: AbortSignal) {
     setIngestedOpportunitiesLoading(true)
     try {
-      const response = await apiFetch(`${API_URL}/api/v1/opportunities/ingested`)
+      const response = await apiFetch(`${API_URL}/api/v1/opportunities/ingested`, {
+        signal,
+      })
       if (!response.ok) {
         throw new Error('Unable to load saved opportunities.')
       }
-      setIngestedOpportunities(await response.json())
+      const payload = await response.json()
+      if (signal.aborted) return
+      setIngestedOpportunities(payload)
     } catch (error) {
-      setOpportunityStatus(
-        error instanceof Error
-          ? error.message
-          : 'Unable to load saved opportunities.'
-      )
+      if (!signal.aborted) {
+        setOpportunityStatus(
+          error instanceof Error
+            ? error.message
+            : 'Unable to load saved opportunities.'
+        )
+      }
     } finally {
-      setIngestedOpportunitiesLoading(false)
+      if (!signal.aborted) setIngestedOpportunitiesLoading(false)
     }
   }
 
   useEffect(() => {
-    if (authUser) void loadIngestedOpportunities()
+    if (!authUser) return
+    const controller = new AbortController()
+    void loadIngestedOpportunities(controller.signal)
+    return () => controller.abort()
   }, [authUser?.id])
 
   async function compareSelectedReviews() {
@@ -1012,8 +1079,9 @@ async function handlePreviewText(
   }
 
   return (
-    <main>
-      <nav>
+    <>
+      <a className="skip-link" href="#main-content">Skip to workspace</a>
+      <nav aria-label="Account and workspace navigation">
         <strong>
           ApplyLens <span>AI</span>
         </strong>
@@ -1041,6 +1109,8 @@ async function handlePreviewText(
           <button className="ghost" type="button" onClick={handleLogout}>Sign out</button>
         </div>
       </nav>
+
+      <main id="main-content">
 
       {showSecurity && (
         <section className="security-panel" aria-labelledby="security-heading">
@@ -1149,6 +1219,18 @@ async function handlePreviewText(
         </section>
       )}
 
+      <OnboardingPanel
+        documentCount={documents.length}
+        profileItemCount={profileItemCount}
+        opportunityCount={ingestedOpportunities.length}
+        reviewCount={reviews.length}
+        taskCount={tasks.length}
+        loading={
+          documentsLoading || profileItemCount === null ||
+          ingestedOpportunitiesLoading || reviewsLoading || tasksLoading
+        }
+      />
+
       <section className="hero">
         <div>
           <p className="eyebrow">
@@ -1190,7 +1272,7 @@ async function handlePreviewText(
             </button>
           </div>
 
-          <form className="upload-card" onSubmit={handleUpload}>
+          <form className="upload-card" id="document-upload" onSubmit={handleUpload}>
             <p className="eyebrow">DOCUMENT UPLOAD</p>
             <h3>Send your first PDF or TXT</h3>
             <label className="upload-field">
@@ -1663,6 +1745,7 @@ async function handlePreviewText(
         apiUrl={API_URL}
         documents={documents}
         documentsReady={documentsReady}
+        onProgressChange={setProfileItemCount}
       />
 
       <section className="workspace">
@@ -1671,7 +1754,7 @@ async function handlePreviewText(
           <h2>Applications at a glance</h2>
         </div>
 
-        <div className="task-card">
+        <div className="task-card" id="task-tracker">
           <div className="task-card-header">
             <div>
               <p className="eyebrow">APPLICATION TASKS</p>
@@ -1682,6 +1765,11 @@ async function handlePreviewText(
 
           {tasksLoading ? (
             <p className="upload-status">Loading tasks...</p>
+          ) : tasks.length === 0 ? (
+            <p className="upload-status">
+              No tasks yet. Analyse an opportunity to generate the missing documents,
+              deadlines, and follow-up work.
+            </p>
           ) : (
             <ul className="task-list">
               {tasks.map((task) => (
@@ -1716,7 +1804,9 @@ async function handlePreviewText(
           {reviewsLoading ? (
             <p className="upload-status">Loading reviews...</p>
           ) : reviews.length === 0 ? (
-            <p className="upload-status">No saved reviews yet.</p>
+            <p className="upload-status">
+              No saved reviews yet. Run an eligibility analysis to keep a result here.
+            </p>
           ) : (
             <>
               <div className="actions">
@@ -1827,12 +1917,13 @@ async function handlePreviewText(
       </section>
 
       <footer className="page-footer">
-        Built by Oumaima Ouayres • Sprint 13 • Master's and PhD MVP
+        Built by Oumaima Ouayres • Free public beta • Master's and PhD application intelligence
         <small>
           By using ApplyLens, you remain responsible for verifying requirements and
           submitting applications. ApplyLens does not guarantee admission or funding.
         </small>
       </footer>
-    </main>
+      </main>
+    </>
   )
 }
