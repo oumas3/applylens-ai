@@ -1,4 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
+import CandidateProfilePanel from './CandidateProfilePanel'
 
 const API_URL =
   import.meta.env.VITE_API_URL ?? `${window.location.protocol}//${window.location.hostname}:8000`
@@ -146,6 +147,7 @@ export default function App() {
     }>
   >([])
   const [documentsLoading, setDocumentsLoading] = useState(false)
+  const [documentsReady, setDocumentsReady] = useState(false)
   const [documentCategory, setDocumentCategory] = useState('OTHER')
   const [previewText, setPreviewText] = useState('')
   const [previewTitle, setPreviewTitle] = useState('')
@@ -435,6 +437,7 @@ export default function App() {
 
   async function loadDocuments() {
     setDocumentsLoading(true)
+    setDocumentsReady(false)
 
     try {
       const response = await apiFetch(`${API_URL}/api/v1/documents`)
@@ -445,6 +448,7 @@ export default function App() {
 
       const payload = await response.json()
       setDocuments(payload)
+      setDocumentsReady(true)
     } catch (error) {
       setUploadStatus(
         error instanceof Error ? error.message : 'Unable to load documents.'
@@ -1083,9 +1087,9 @@ async function handlePreviewText(
             <p className="eyebrow">PRIVACY &amp; DATA</p>
             <h2 id="privacy-heading">You control your account data</h2>
             <p className="analysis-status">
-              ApplyLens stores your account, uploaded documents, extracted opportunity
-              text, reviews, and tasks. Data is kept until you delete individual records
-              or permanently delete your account.
+              ApplyLens stores your account, candidate profile, uploaded documents,
+              extracted opportunity text, reviews, and tasks. Data is kept until you
+              delete individual records or permanently delete your account.
             </p>
             <p className="analysis-status">
               Local analysis stays inside ApplyLens. When external AI is configured and
@@ -1172,7 +1176,18 @@ async function handlePreviewText(
             >
               Analyse an opportunity
             </button>
-            <button className="ghost">Build my profile</button>
+            <button
+              className="ghost"
+              type="button"
+              onClick={() =>
+                document.getElementById('candidate-profile')?.scrollIntoView({
+                  behavior: 'smooth',
+                  block: 'start',
+                })
+              }
+            >
+              Build my profile
+            </button>
           </div>
 
           <form className="upload-card" onSubmit={handleUpload}>
@@ -1643,6 +1658,12 @@ async function handlePreviewText(
           )}
         </div>
       </section>
+
+      <CandidateProfilePanel
+        apiUrl={API_URL}
+        documents={documents}
+        documentsReady={documentsReady}
+      />
 
       <section className="workspace">
         <div>

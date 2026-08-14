@@ -15,6 +15,7 @@ def test_resource_routes_require_authentication() -> None:
         "/api/v1/opportunities/ingested",
         "/api/v1/reviews",
         "/api/v1/tasks",
+        "/api/v1/profile",
     ):
         response = client.get(path)
         assert response.status_code == 401, path

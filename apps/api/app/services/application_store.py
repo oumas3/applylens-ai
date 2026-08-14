@@ -61,7 +61,8 @@ class PostgresApplicationStore:
                        to_regclass('public.documents') AS documents,
                        to_regclass('public.opportunities') AS opportunities,
                        to_regclass('public.reviews') AS reviews,
-                       to_regclass('public.tasks') AS tasks
+                       to_regclass('public.tasks') AS tasks,
+                       to_regclass('public.candidate_profiles') AS candidate_profiles
                 """
             ).fetchone()
             missing = [
@@ -75,6 +76,7 @@ class PostgresApplicationStore:
                     "opportunities",
                     "reviews",
                     "tasks",
+                    "candidate_profiles",
                 )
                 if not row or row[name] is None
             ]
@@ -255,5 +257,75 @@ class PostgresApplicationStore:
                     (
                         record["user_id"], record["id"], record["opportunity_id"],
                         record["title"], record["status"],
+                    ),
+                )
+
+    def load_profiles(self) -> list[dict[str, Any]]:
+        with self._connect() as connection:
+            rows = connection.execute(
+                """
+                SELECT user_id, full_name, headline, location, summary,
+                       education, work_experience, research_experience,
+                       languages, skills, publications, updated_at
+                FROM candidate_profiles
+                ORDER BY user_id
+                """
+            ).fetchall()
+        collection_fields = (
+            "education",
+            "work_experience",
+            "research_experience",
+            "languages",
+            "skills",
+            "publications",
+        )
+        return [
+            {
+                **row,
+                **{
+                    field: self._record_value(row[field])
+                    for field in collection_fields
+                },
+            }
+            for row in rows
+        ]
+
+    def replace_profiles(
+        self,
+        records: Iterable[dict[str, Any]],
+        *,
+        user_id: str | None = None,
+    ) -> None:
+        values = list(records)
+        with self._connect() as connection:
+            if user_id is None:
+                connection.execute("DELETE FROM candidate_profiles")
+            else:
+                connection.execute(
+                    "DELETE FROM candidate_profiles WHERE user_id = %s",
+                    (user_id,),
+                )
+            for record in values:
+                connection.execute(
+                    """
+                    INSERT INTO candidate_profiles (
+                        user_id, full_name, headline, location, summary,
+                        education, work_experience, research_experience,
+                        languages, skills, publications, updated_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        record["user_id"],
+                        record["full_name"],
+                        record["headline"],
+                        record["location"],
+                        record["summary"],
+                        self._json_param(record["education"]),
+                        self._json_param(record["work_experience"]),
+                        self._json_param(record["research_experience"]),
+                        self._json_param(record["languages"]),
+                        self._json_param(record["skills"]),
+                        self._json_param(record["publications"]),
+                        self._json_value(record["updated_at"]),
                     ),
                 )

@@ -9,6 +9,7 @@ from app.routers import documents as documents_router
 from app.routers import opportunities as opportunities_router
 from app.routers import reviews as reviews_router
 from app.routers import tasks as tasks_router
+from app.routers import profiles as profiles_router
 from app.routers.auth import get_current_user
 
 from io import BytesIO
@@ -43,6 +44,7 @@ def isolate_persistent_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
         "OPPORTUNITIES_FILE",
         tmp_path / "opportunities.json",
     )
+    monkeypatch.setattr(profiles_router, "PROFILES_FILE", tmp_path / "profiles.json")
 
     reviews_router.reviews[:] = []
     tasks_router.tasks[:] = [
@@ -52,6 +54,7 @@ def isolate_persistent_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     documents_router.documents.clear()
     opportunities_router.ingested_opportunities.clear()
     opportunities_router._retrieval_cache.clear()
+    profiles_router.profiles.clear()
 
 def test_upload_document_rejects_corrupted_pdf() -> None:
     response = client.post(
@@ -267,7 +270,7 @@ def test_product_scope() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["supported_opportunities"] == ["Master's", "PhD"]
-    assert payload["phase"] == "Sprint 13 — Privacy and account lifecycle"
+    assert payload["phase"] == "Sprint 14 — Evidence-linked candidate profiles"
 
 
 def test_upload_document_accepts_valid_pdf() -> None:

@@ -10,6 +10,7 @@ from app.routers import documents as documents_router
 from app.routers import opportunities as opportunities_router
 from app.routers import reviews as reviews_router
 from app.routers import tasks as tasks_router
+from app.routers import profiles as profiles_router
 from app.services.file_storage import LocalFileStorage
 
 
@@ -22,16 +23,19 @@ def account_client(tmp_path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(opportunities_router, "OPPORTUNITIES_FILE", tmp_path / "opportunities.json")
     monkeypatch.setattr(reviews_router, "REVIEWS_FILE", tmp_path / "reviews.json")
     monkeypatch.setattr(tasks_router, "TASKS_FILE", tmp_path / "tasks.json")
+    monkeypatch.setattr(profiles_router, "PROFILES_FILE", tmp_path / "profiles.json")
     monkeypatch.setattr(documents_router, "application_store", None)
     monkeypatch.setattr(opportunities_router, "application_store", None)
     monkeypatch.setattr(reviews_router, "application_store", None)
     monkeypatch.setattr(tasks_router, "application_store", None)
+    monkeypatch.setattr(profiles_router, "application_store", None)
 
     documents_router.documents.clear()
     opportunities_router.ingested_opportunities.clear()
     opportunities_router._retrieval_cache.clear()
     reviews_router.reviews.clear()
     tasks_router.tasks.clear()
+    profiles_router.profiles.clear()
 
     with TestClient(app) as client:
         yield client, tmp_path
@@ -90,6 +94,19 @@ def _add_workspace_data(client: TestClient, label: str) -> tuple[str, bytes]:
         },
     )
     assert generated.status_code == 200
+    profile = client.put(
+        "/api/v1/profile",
+        json={
+            "skills": [
+                {
+                    "id": f"{label}-skill",
+                    "name": "Python",
+                    "document_ids": [document.json()["id"]],
+                }
+            ]
+        },
+    )
+    assert profile.status_code == 200
     return document.json()["stored_filename"], content
 
 
@@ -115,7 +132,7 @@ def test_account_export_contains_exact_owned_data_only(account_client) -> None:
     )
     assert response.headers["cache-control"] == "no-store"
     payload = response.json()
-    assert payload["schema_version"] == "1.0"
+    assert payload["schema_version"] == "1.1"
     assert payload["account"]["id"] == first_id
     assert payload["account"]["email"] == "first@example.com"
     assert "password_hash" not in payload["account"]
@@ -126,6 +143,7 @@ def test_account_export_contains_exact_owned_data_only(account_client) -> None:
     assert [item["title"] for item in payload["reviews"]] == ["first review"]
     assert payload["tasks"]
     assert all(item["user_id"] == first_id for item in payload["tasks"])
+    assert payload["profile"]["skills"][0]["name"] == "Python"
 
 
 def test_external_ai_consent_defaults_off_and_persists(account_client) -> None:
@@ -218,7 +236,9 @@ def test_account_deletion_requires_password_and_preserves_other_tenant(account_c
     assert all(item.user_id != first_id for item in opportunities_router.ingested_opportunities)
     assert all(item.user_id != first_id for item in reviews_router.reviews)
     assert all(item.user_id != first_id for item in tasks_router.tasks)
+    assert first_id not in profiles_router.profiles
     assert any(item.user_id == second_id for item in documents_router.documents.values())
+    assert second_id in profiles_router.profiles
 
 
 def test_account_routes_require_authentication(account_client) -> None:

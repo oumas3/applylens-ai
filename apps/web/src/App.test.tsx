@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import App from './App'
 
@@ -41,6 +41,22 @@ function defaultFetchResponse(url: string, method: string): MockResponse {
   }
   if (url.endsWith('/api/v1/opportunities/ingested')) {
     return responseFor([])
+  }
+  if (url.endsWith('/api/v1/profile')) {
+    return responseFor({
+      user_id: 'test-user',
+      updated_at: null,
+      full_name: null,
+      headline: null,
+      location: null,
+      summary: null,
+      education: [],
+      work_experience: [],
+      research_experience: [],
+      languages: [],
+      skills: [],
+      publications: [],
+    })
   }
   return responseFor({})
 }
@@ -207,6 +223,86 @@ describe('ApplyLens UI', () => {
         body: JSON.stringify({ external_ai_consent: true }),
       })
     )
+  })
+
+  it('builds and saves an evidence-linked candidate profile', async () => {
+    const document = {
+      id: 'document-1',
+      original_filename: 'candidate-cv.txt',
+      stored_filename: 'document-1.txt',
+      category: 'CV',
+      content_type: 'text/plain',
+      size_bytes: 100,
+      status: 'uploaded',
+      extracted_text_length: 100,
+      uploaded_at: '2026-08-14T10:00:00Z',
+    }
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/documents')) {
+        return Promise.resolve(responseFor([document]))
+      }
+      if (url.endsWith('/api/v1/profile') && init?.method === 'PUT') {
+        const body = JSON.parse(String(init.body))
+        return Promise.resolve(
+          responseFor({
+            ...body,
+            user_id: 'test-user',
+            updated_at: '2026-08-14T10:05:00Z',
+          })
+        )
+      }
+      return Promise.resolve(defaultFetchResponse(url, init?.method ?? 'GET'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    const profileHeading = await screen.findByRole('heading', {
+      name: 'Build reusable, evidence-linked credentials',
+    })
+    const profileSection = profileHeading.closest('section')
+    expect(profileSection).not.toBeNull()
+    const profileForm = within(profileSection as HTMLElement)
+    fireEvent.change(profileForm.getByLabelText('Full name'), {
+      target: { value: 'Candidate Example' },
+    })
+    fireEvent.click(profileForm.getByRole('button', { name: 'Add education' }))
+    fireEvent.change(profileForm.getByLabelText('Degree'), {
+      target: { value: "Master's degree" },
+    })
+    fireEvent.change(profileForm.getByLabelText('Field of study'), {
+      target: { value: 'Artificial Intelligence' },
+    })
+    fireEvent.change(profileForm.getByLabelText('Institution'), {
+      target: { value: 'Example University' },
+    })
+    const evidenceDocuments = profileForm.getByLabelText(
+      /^Evidence documents/
+    ) as HTMLSelectElement
+    const cvOption = profileForm.getByRole('option', { name: 'candidate-cv.txt' }) as HTMLOptionElement
+    cvOption.selected = true
+    fireEvent.change(evidenceDocuments)
+    fireEvent.click(profileForm.getByRole('button', { name: 'Save candidate profile' }))
+
+    await waitFor(() =>
+      expect(
+        screen.getByText('Profile saved. Evidence-linked claims are ready for analysis.')
+      ).toBeInTheDocument()
+    )
+    const profileCall = fetchMock.mock.calls.find(
+      ([input, init]) => String(input).endsWith('/api/v1/profile') && init?.method === 'PUT'
+    )
+    expect(profileCall).toBeDefined()
+    const savedProfile = JSON.parse(String(profileCall?.[1]?.body))
+    expect(savedProfile.full_name).toBe('Candidate Example')
+    expect(savedProfile.education).toEqual([
+      expect.objectContaining({
+        degree: "Master's degree",
+        field_of_study: 'Artificial Intelligence',
+        institution: 'Example University',
+        document_ids: ['document-1'],
+      }),
+    ])
   })
 
   it('permanently deletes the account after explicit confirmation', async () => {

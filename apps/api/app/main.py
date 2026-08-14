@@ -9,6 +9,7 @@ from app.routers.tasks import router as tasks_router
 from app.routers.reviews import router as reviews_router
 from app.routers.auth import router as auth_router
 from app.routers.account import router as account_router
+from app.routers.profiles import router as profile_router
 from app.config import get_settings
 from app.services.application_store import PostgresApplicationStore
 from app.observability import (
@@ -59,6 +60,7 @@ app.include_router(tasks_router)
 app.include_router(reviews_router)
 app.include_router(auth_router)
 app.include_router(account_router)
+app.include_router(profile_router)
 
 @app.get("/health")
 def health() -> dict[str, str]:
@@ -122,7 +124,7 @@ def readiness() -> ReadinessResponse | JSONResponse:
 def product() -> ProductInfo:
     return ProductInfo(
         name="ApplyLens AI",
-        phase="Sprint 13 — Privacy and account lifecycle",
+        phase="Sprint 14 — Evidence-linked candidate profiles",
         supported_opportunities=["Master's", "PhD"],
         promise="Every decision is backed by evidence or marked unclear.",
     )

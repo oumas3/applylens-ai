@@ -16,6 +16,7 @@ from typing import Literal
 from app.config import get_settings
 from app.routers.auth import get_current_user
 from app.routers.documents import documents, file_storage, read_upload_bytes
+from app.routers.profiles import profile_evidence, profiles, referenced_document_ids
 from app.services.document_service import DocumentExtractionError, DocumentService
 from app.services.application_store import PostgresApplicationStore
 from app.services.embedding_service import (
@@ -699,6 +700,23 @@ def analyse_opportunity(
     normalized_requirements = [item.strip() for item in request.requirements if item and item.strip()]
     normalized_evidence = [item.strip() for item in request.evidence if item and item.strip()]
     normalized_evidence.extend(_document_evidence(request.document_ids, str(user["id"])))
+    user_id = str(user["id"])
+    profile = profiles.get(user_id)
+    profile_documents: dict[str, tuple[str, str]] = {}
+    if profile is not None:
+        for document_id in referenced_document_ids(profile):
+            document = documents.get(document_id)
+            if document is None or document.user_id != user_id:
+                continue
+            try:
+                text = DocumentService.extract_text(
+                    document.content_type,
+                    file_storage.read(document.stored_filename),
+                )
+            except (OSError, DocumentExtractionError):
+                continue
+            profile_documents[document_id] = (document.original_filename, text)
+    normalized_evidence.extend(profile_evidence(profile, profile_documents))
 
     matched_requirements = []
     missing_requirements = []

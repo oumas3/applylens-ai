@@ -321,3 +321,6 @@ def delete_document(document_id: str, user: dict[str, str | bool] = Depends(get_
     documents.pop(document_id)
     file_storage.delete(document.stored_filename)
     _persist_documents(str(user["id"]))
+    from app.routers.profiles import remove_document_reference
+
+    remove_document_reference(str(user["id"]), document_id)

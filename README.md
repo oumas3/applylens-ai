@@ -4,7 +4,7 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 
 ## Current verification
 
-- Backend test suite: 139 passing tests
+- Backend test suite: 156 passing tests
 - Deployment smoke-check suite: 6 passing tests
 - Frontend tests and production build: passing
 
@@ -106,6 +106,21 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 - Document DNS, secrets, migrations, SMTP, acceptance testing, backups,
   restoration, and rollback as a repeatable staging runbook.
 
+### Sprint 13 — Privacy and account lifecycle
+
+- Export every account-owned record and exact uploaded file content as private JSON.
+- Permanently delete accounts, sessions, reset tokens, files, vectors, reviews, and tasks.
+- Require explicit per-account consent before external AI evidence processing.
+- Explain privacy boundaries, AI limitations, and candidate responsibility in the UI.
+
+### Sprint 14 — Evidence-linked candidate profiles
+
+- Store one structured candidate profile per account in JSON or PostgreSQL.
+- Model education, work, research, languages, skills, and publications.
+- Link individual profile claims to uploaded documents owned by the same account.
+- Automatically include only live, document-supported profile claims in eligibility analysis.
+- Edit and validate the profile through a compact, responsive React interface.
+
 The default retrieval implementation remains local and deterministic, so the MVP
 works without external services. Production deployments can opt into OpenAI
 embeddings and PostgreSQL/pgvector using the configuration below.
@@ -113,8 +128,10 @@ embeddings and PostgreSQL/pgvector using the configuration below.
 ### Production vector storage preparation
 
 The pgvector migration is at `apps/api/migrations/001_pgvector.sql`, and
-application/authentication tables are defined in
-`apps/api/migrations/002_application_data.sql`.
+application/authentication tables start in
+`apps/api/migrations/002_application_data.sql`. Account privacy and candidate
+profiles are added by migrations `005_account_privacy.sql` and
+`006_candidate_profiles.sql`.
 It creates a persistent `opportunity_chunks` table for OpenAI
 `text-embedding-3-small` vectors and a cosine-similarity HNSW index. Applying
 it requires PostgreSQL with the `pgvector` extension installed; local retrieval

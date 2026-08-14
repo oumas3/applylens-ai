@@ -280,3 +280,137 @@
     grid-template-columns: 1fr;
   }
 }
+
+.profile-section {
+  padding: 56px max(6vw, 24px);
+  border-top: 1px solid #e4e7f0;
+  border-bottom: 1px solid #e4e7f0;
+  background: #fff;
+}
+
+.profile-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  max-width: 1180px;
+  margin: 0 auto 24px;
+}
+
+.profile-heading h2 {
+  margin: 6px 0 0;
+  font-size: 2rem;
+}
+
+.profile-form {
+  display: grid;
+  gap: 14px;
+  max-width: 1180px;
+  margin: 0 auto;
+}
+
+.profile-basics,
+.profile-item {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.profile-basics {
+  padding: 20px;
+  border: 1px solid #e4e7f0;
+  border-radius: 16px;
+  background: #fafbfe;
+}
+
+.profile-field {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  color: #5b5774;
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.profile-field input,
+.profile-field select,
+.profile-field textarea {
+  width: 100%;
+  padding: 10px 11px;
+  border: 1px solid #d9d5f0;
+  border-radius: 9px;
+  background: #fff;
+  color: #152238;
+  font: inherit;
+  font-weight: 400;
+}
+
+.profile-field select[multiple] {
+  min-height: 76px;
+}
+
+.profile-field small {
+  color: #7c8597;
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.profile-wide,
+.evidence-documents,
+.remove-item {
+  grid-column: 1 / -1;
+}
+
+.profile-group {
+  padding: 16px 18px;
+  border: 1px solid #e4e7f0;
+  border-radius: 14px;
+  background: #fff;
+}
+
+.profile-group summary {
+  cursor: pointer;
+  color: #394359;
+  font-weight: 800;
+}
+
+.profile-item {
+  margin: 16px 0;
+  padding: 16px;
+  border: 1px solid #eceaf6;
+  border-radius: 12px;
+  background: #fcfbff;
+}
+
+.profile-item.compact {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.remove-item {
+  justify-self: start;
+  color: #9b2338;
+}
+
+.profile-save {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.profile-save .analysis-status {
+  margin: 0;
+}
+
+@media (max-width: 800px) {
+  .profile-heading,
+  .profile-save {
+    flex-direction: column;
+  }
+
+  .profile-basics,
+  .profile-item,
+  .profile-item.compact {
+    grid-template-columns: 1fr;
+  }
+}

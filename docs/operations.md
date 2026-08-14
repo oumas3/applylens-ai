@@ -46,6 +46,14 @@ For Sprint 11, apply the account-recovery-token migration before updating the AP
 docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml exec -T postgres psql -U applylens -d applylens -f /docker-entrypoint-initdb.d/004_password_reset_tokens.sql
 ```
 
+For Sprints 13 and 14, apply the privacy preference and candidate-profile
+migrations before updating the API:
+
+```powershell
+docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml exec -T postgres psql -U applylens -d applylens -f /docker-entrypoint-initdb.d/005_account_privacy.sql
+docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml exec -T postgres psql -U applylens -d applylens -f /docker-entrypoint-initdb.d/006_candidate_profiles.sql
+```
+
 Adjust the database user and name if the production environment overrides their defaults.
 
 ## Account recovery email

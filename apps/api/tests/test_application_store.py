@@ -25,7 +25,10 @@ def test_postgres_connections_have_a_bounded_timeout(monkeypatch) -> None:
     assert captured["connect_timeout"] == DATABASE_CONNECT_TIMEOUT_SECONDS
 
 
-@pytest.mark.parametrize("missing_table", ["login_attempts", "password_reset_tokens"])
+@pytest.mark.parametrize(
+    "missing_table",
+    ["login_attempts", "password_reset_tokens", "candidate_profiles"],
+)
 def test_schema_check_requires_auth_security_tables(monkeypatch, missing_table: str) -> None:
     class Result:
         @staticmethod
@@ -39,6 +42,7 @@ def test_schema_check_requires_auth_security_tables(monkeypatch, missing_table: 
                 "opportunities": "opportunities",
                 "reviews": "reviews",
                 "tasks": "tasks",
+                "candidate_profiles": "candidate_profiles",
             }
             tables[missing_table] = None
             return tables

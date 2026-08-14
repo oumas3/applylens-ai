@@ -13,6 +13,7 @@ from app.routers import documents as documents_router
 from app.routers import opportunities as opportunities_router
 from app.routers import reviews as reviews_router
 from app.routers import tasks as tasks_router
+from app.routers import profiles as profiles_router
 from app.routers.auth import (
     SESSION_COOKIE,
     get_auth_service,
@@ -45,13 +46,14 @@ class AccountDeletionRequest(BaseModel):
 
 
 class AccountExportResponse(BaseModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.1"] = "1.1"
     exported_at: datetime
     account: dict[str, Any]
     documents: list[dict[str, Any]]
     opportunities: list[dict[str, Any]]
     reviews: list[dict[str, Any]]
     tasks: list[dict[str, Any]]
+    profile: dict[str, Any] | None
 
 
 def _privacy_response(consent: bool) -> PrivacyPreferenceResponse:
@@ -142,6 +144,11 @@ def export_account_data(
             for item in tasks_router.tasks
             if item.user_id == user_id
         ],
+        profile=(
+            profiles_router.profiles[user_id].model_dump(mode="json")
+            if user_id in profiles_router.profiles
+            else None
+        ),
     )
 
 
@@ -197,11 +204,13 @@ def delete_account(
     tasks_router.tasks[:] = [
         item for item in tasks_router.tasks if item.user_id != user_id
     ]
+    profiles_router.profiles.pop(user_id, None)
 
     if not service.database_url:
         documents_router._persist_documents()
         opportunities_router._persist_opportunities()
         reviews_router._persist_reviews()
         tasks_router._persist_tasks()
+        profiles_router._persist_profiles()
 
     response.delete_cookie(SESSION_COOKIE)

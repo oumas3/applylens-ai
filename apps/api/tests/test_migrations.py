@@ -11,6 +11,10 @@ PASSWORD_RESET_MIGRATION = (
 ACCOUNT_PRIVACY_MIGRATION = (
     Path(__file__).resolve().parents[1] / "migrations" / "005_account_privacy.sql"
 )
+CANDIDATE_PROFILE_MIGRATION = (
+    Path(__file__).resolve().parents[1] / "migrations" / "006_candidate_profiles.sql"
+)
+REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 
 
 def test_application_data_migration_defines_required_tables_and_indexes() -> None:
@@ -59,3 +63,26 @@ def test_account_privacy_migration_adds_explicit_consent_default() -> None:
 
     assert "add column if not exists external_ai_consent" in sql
     assert "not null default false" in sql
+
+
+def test_candidate_profile_migration_is_owned_structured_and_idempotent() -> None:
+    sql = CANDIDATE_PROFILE_MIGRATION.read_text(encoding="utf-8").lower()
+
+    assert "create table if not exists candidate_profiles" in sql
+    assert "user_id text primary key references users(id) on delete cascade" in sql
+    for field in (
+        "education",
+        "work_experience",
+        "research_experience",
+        "languages",
+        "skills",
+        "publications",
+    ):
+        assert f"{field} jsonb not null default '[]'::jsonb" in sql
+
+
+def test_compose_mounts_privacy_and_profile_migrations() -> None:
+    for filename in ("docker-compose.yml", "docker-compose.production.yml"):
+        compose = (REPOSITORY_ROOT / filename).read_text(encoding="utf-8")
+        assert "005_account_privacy.sql:/docker-entrypoint-initdb.d/005_account_privacy.sql:ro" in compose
+        assert "006_candidate_profiles.sql:/docker-entrypoint-initdb.d/006_candidate_profiles.sql:ro" in compose
