@@ -51,3 +51,9 @@ def test_production_compose_requires_launch_identity_and_contacts() -> None:
         "INCIDENT_CONTACT_EMAIL: "
         "${INCIDENT_CONTACT_EMAIL:?Set the incident response email}"
     ) in compose
+
+    workflow = (REPOSITORY_ROOT / ".github" / "workflows" / "ci.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "SUPPORT_EMAIL: support@example.com" in workflow
+    assert "INCIDENT_CONTACT_EMAIL: incident-response@example.com" in workflow

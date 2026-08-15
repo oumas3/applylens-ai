@@ -84,6 +84,8 @@ jobs:
       SMTP_USERNAME: ci-placeholder
       SMTP_PASSWORD: ci-placeholder
       SMTP_FROM_EMAIL: support@example.com
+      SUPPORT_EMAIL: support@example.com
+      INCIDENT_CONTACT_EMAIL: incident-response@example.com
       STAGING_WEB_HOST: staging.example.com
       STAGING_API_HOST: api.staging.example.com
       TLS_EMAIL: operations@example.com
