@@ -37,6 +37,12 @@ def successful_opener(request: object, *, timeout: float) -> FakeResponse:
             '{"status":"ok","environment":"production"}',
             request_id="staging-check-123",
         )
+    if url.endswith("/api/v1/product"):
+        return FakeResponse(
+            '{"name":"ApplyLens AI","version":"0.1.0-beta.1",'
+            '"release_channel":"free-public-beta",'
+            '"support_email":"support@example.com"}'
+        )
     return FakeResponse('<html><title>ApplyLens AI</title><div id="root"></div></html>')
 
 
@@ -50,8 +56,25 @@ class SmokeTestTests(unittest.TestCase):
 
         self.assertEqual(
             [result.name for result in results],
-            ["API liveness", "API readiness", "Frontend"],
+            ["API liveness", "API readiness", "Product metadata", "Frontend"],
         )
+
+    def test_product_metadata_requires_a_public_support_route(self) -> None:
+        def opener(request: object, *, timeout: float) -> FakeResponse:
+            del timeout
+            if request.full_url.endswith("/api/v1/product"):  # type: ignore[attr-defined]
+                return FakeResponse(
+                    '{"name":"ApplyLens AI","version":"0.1.0-beta.1",'
+                    '"release_channel":"free-public-beta","support_email":null}'
+                )
+            return successful_opener(request, timeout=1)
+
+        with self.assertRaisesRegex(SmokeCheckError, "public support email"):
+            run_smoke_checks(
+                web_url="https://staging.example.com",
+                api_url="https://api.staging.example.com",
+                opener=opener,
+            )
 
     def test_https_is_required_unless_local_override_is_explicit(self) -> None:
         with self.assertRaisesRegex(SmokeCheckError, "HTTPS"):

@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import CandidateProfilePanel from './CandidateProfilePanel'
+import LegalInfoPanel, { type ProductInfo } from './LegalInfoPanel'
 import OnboardingPanel from './OnboardingPanel'
 
 const API_URL =
@@ -7,6 +8,16 @@ const API_URL =
 
 const apiFetch = (input: RequestInfo | URL, init: RequestInit = {}) =>
   fetch(input, { ...init, credentials: 'include' })
+
+const DEFAULT_PRODUCT_INFO: ProductInfo = {
+  name: 'ApplyLens AI',
+  version: '0.1.0-beta.1',
+  release_channel: 'free-public-beta',
+  phase: 'Free public beta launch candidate',
+  supported_opportunities: ["Master's", 'PhD'],
+  promise: 'Every decision is backed by evidence or marked unclear.',
+  support_email: null,
+}
 
 type AuthUser = {
   id: string
@@ -118,6 +129,8 @@ export default function App() {
   )
   const [showSecurity, setShowSecurity] = useState(false)
   const [showPrivacy, setShowPrivacy] = useState(false)
+  const [showLegal, setShowLegal] = useState(false)
+  const [productInfo, setProductInfo] = useState<ProductInfo>(DEFAULT_PRODUCT_INFO)
   const [currentPassword, setCurrentPassword] = useState('')
   const [newPassword, setNewPassword] = useState('')
   const [securityStatus, setSecurityStatus] = useState('')
@@ -248,6 +261,17 @@ export default function App() {
       .finally(() => setAuthLoading(false))
   }, [])
 
+  useEffect(() => {
+    const controller = new AbortController()
+    apiFetch(`${API_URL}/api/v1/product`, { signal: controller.signal })
+      .then(async (response) => {
+        if (!response.ok) return
+        setProductInfo(await response.json())
+      })
+      .catch(() => undefined)
+    return () => controller.abort()
+  }, [])
+
   async function handleAuthSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     setAuthStatus(authMode === 'login' ? 'Signing in...' : 'Creating your account...')
@@ -327,6 +351,7 @@ export default function App() {
     setAuthUser(null)
     setShowSecurity(false)
     setShowPrivacy(false)
+    setShowLegal(false)
     setCurrentPassword('')
     setNewPassword('')
     setSecurityStatus('')
@@ -337,6 +362,7 @@ export default function App() {
     const nextOpen = !showPrivacy
     setShowPrivacy(nextOpen)
     setShowSecurity(false)
+    setShowLegal(false)
     if (!nextOpen || privacyPreference) return
 
     setPrivacyStatus('Loading privacy settings...')
@@ -1054,6 +1080,7 @@ async function handlePreviewText(
 
     return (
       <main className="auth-shell">
+        <div className="auth-stack">
         <section className="decision-card auth-card">
           <p className="eyebrow">APPLYLENS AI</p>
           <h1>{heading}</h1>
@@ -1115,8 +1142,20 @@ async function handlePreviewText(
             >
               {authMode === 'login' ? 'Need an account? Register' : 'Back to sign in'}
             </button>
+            <button
+              className="ghost"
+              type="button"
+              aria-expanded={showLegal}
+              onClick={() => setShowLegal((current) => !current)}
+            >
+              Privacy, terms &amp; support
+            </button>
           </div>
         </section>
+        {showLegal && (
+          <LegalInfoPanel product={productInfo} onClose={() => setShowLegal(false)} />
+        )}
+        </div>
       </main>
     )
   }
@@ -1137,6 +1176,7 @@ async function handlePreviewText(
             onClick={() => {
               setShowSecurity((current) => !current)
               setShowPrivacy(false)
+              setShowLegal(false)
             }}
           >
             Security
@@ -1148,6 +1188,18 @@ async function handlePreviewText(
             onClick={togglePrivacyPanel}
           >
             Privacy &amp; data
+          </button>
+          <button
+            className="ghost"
+            type="button"
+            aria-expanded={showLegal}
+            onClick={() => {
+              setShowLegal((current) => !current)
+              setShowSecurity(false)
+              setShowPrivacy(false)
+            }}
+          >
+            Legal &amp; support
           </button>
           <button className="ghost" type="button" onClick={handleLogout}>Sign out</button>
         </div>
@@ -1260,6 +1312,10 @@ async function handlePreviewText(
             </button>
           </form>
         </section>
+      )}
+
+      {showLegal && (
+        <LegalInfoPanel product={productInfo} onClose={() => setShowLegal(false)} />
       )}
 
       <OnboardingPanel

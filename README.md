@@ -144,6 +144,19 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 - Opportunistically remove expired sessions, reset tokens, login attempts, and
   request-limit records using indexed SQLite/PostgreSQL storage.
 
+### Sprint 17 — Free public beta launch packaging
+
+- Publish privacy, terms, acceptable-use, external-AI limitations, release
+  version, and operator support information before registration and inside the
+  authenticated workspace.
+- Require public support and private incident contacts in production while
+  keeping real addresses and credentials out of source control.
+- Verify release identity and support metadata through the non-destructive
+  deployment smoke test.
+- Provide an exact-release staging acceptance record covering the full product
+  workflow, SMTP recovery, tenant isolation, export, deletion, backup/restore,
+  rollback, and incident response.
+
 The default retrieval implementation remains local and deterministic, so the MVP
 works without external services. Production deployments can opt into OpenAI
 embeddings and PostgreSQL/pgvector using the configuration below.
@@ -224,6 +237,10 @@ For the first HTTPS staging environment, follow
 `deploy/staging.env.example`.
 The remaining free-beta release gates and their required evidence are tracked in
 [`docs/free-beta-launch-checklist.md`](docs/free-beta-launch-checklist.md).
+Public product terms are in
+[`docs/public-beta-terms.md`](docs/public-beta-terms.md), and deployment approval
+is recorded with
+[`docs/staging-acceptance.md`](docs/staging-acceptance.md).
 
 ## MVP boundary
 

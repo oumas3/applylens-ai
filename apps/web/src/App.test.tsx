@@ -30,6 +30,17 @@ function defaultFetchResponse(url: string, method: string): MockResponse {
   if (url.endsWith('/health')) {
     return responseFor({ status: 'ok' })
   }
+  if (url.endsWith('/api/v1/product')) {
+    return responseFor({
+      name: 'ApplyLens AI',
+      version: '0.1.0-beta.1',
+      release_channel: 'free-public-beta',
+      phase: 'Sprint 17 — Free public beta launch candidate',
+      supported_opportunities: ["Master's", 'PhD'],
+      promise: 'Every decision is backed by evidence or marked unclear.',
+      support_email: 'support@example.com',
+    })
+  }
   if (url.endsWith('/api/v1/documents')) {
     return responseFor([])
   }
@@ -325,7 +336,9 @@ describe('ApplyLens UI', () => {
     const evidenceDocuments = profileForm.getByLabelText(
       /^Evidence documents/
     ) as HTMLSelectElement
-    const cvOption = profileForm.getByRole('option', { name: 'candidate-cv.txt' }) as HTMLOptionElement
+    const cvOption = await profileForm.findByRole('option', {
+      name: 'candidate-cv.txt',
+    }, { timeout: 5000 }) as HTMLOptionElement
     cvOption.selected = true
     fireEvent.change(evidenceDocuments)
     fireEvent.click(profileForm.getByRole('button', { name: 'Save candidate profile' }))
@@ -452,6 +465,52 @@ describe('ApplyLens UI', () => {
       'minlength',
       '12'
     )
+  })
+
+  it('shows privacy, terms, AI limitations, and support before registration', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith('/api/v1/auth/me')) {
+          return Promise.resolve(responseFor({ detail: 'Authentication required.' }, 401))
+        }
+        return Promise.resolve(defaultFetchResponse(String(input), init?.method ?? 'GET'))
+      })
+    )
+
+    render(<App />)
+    await screen.findByText('Welcome back.')
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: 'Privacy, terms & support' })).toBeInTheDocument()
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'Privacy, terms & support' }))
+
+    expect(screen.getByRole('heading', { name: 'Privacy and your data' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'External AI and limitations' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Terms of use' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Acceptable use' })).toBeInTheDocument()
+    expect(screen.getByText(/does not submit applications/i)).toBeInTheDocument()
+    expect(screen.getByText(/ApplyLens AI 0.1.0-beta.1/i)).toBeInTheDocument()
+    expect(screen.getByRole('link', { name: 'support@example.com' })).toHaveAttribute(
+      'href',
+      'mailto:support@example.com'
+    )
+  })
+
+  it('keeps legal and support information reachable from the signed-in workspace', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+        Promise.resolve(defaultFetchResponse(String(input), init?.method ?? 'GET'))
+      )
+    )
+
+    render(<App />)
+    await waitFor(() => expect(screen.getByText(/API CONNECTED/)).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Legal & support' }))
+
+    expect(screen.getByRole('heading', { name: 'Privacy, terms & support' })).toBeInTheDocument()
+    expect(screen.getByRole('heading', { name: 'Support and release' })).toBeInTheDocument()
   })
 
   it('deletes individual tasks and reviews from the workspace', async () => {

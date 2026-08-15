@@ -103,7 +103,7 @@ def run_smoke_checks(
     allow_http: bool = False,
     opener: Opener = urlopen,
 ) -> list[CheckResult]:
-    """Verify the public frontend, API liveness, and dependency readiness."""
+    """Verify the public frontend, API health, and launch metadata."""
     if timeout <= 0:
         raise SmokeCheckError("Timeout must be greater than zero")
 
@@ -137,6 +137,31 @@ def run_smoke_checks(
         raise SmokeCheckError(f"API dependencies are not fully ready: {details}")
     results.append(
         CheckResult("API readiness", f"ok; dependencies={','.join(sorted(checks))}")
+    )
+
+    product_url = f"{normalized_api_url}/api/v1/product"
+    status, _, body = fetch(product_url, timeout=timeout, opener=opener)
+    product = parse_json_object(body, url=product_url)
+    if status != 200 or product.get("name") != "ApplyLens AI":
+        raise SmokeCheckError("Product endpoint did not identify ApplyLens AI")
+    version = product.get("version")
+    if not isinstance(version, str) or not version.strip():
+        raise SmokeCheckError("Product endpoint did not include a release version")
+    if product.get("release_channel") != "free-public-beta":
+        raise SmokeCheckError("Product endpoint did not report the free-public-beta channel")
+    support_email = product.get("support_email")
+    if (
+        not isinstance(support_email, str)
+        or "@" not in support_email
+        or support_email.startswith("@")
+        or support_email.endswith("@")
+    ):
+        raise SmokeCheckError("Product endpoint did not include a public support email")
+    results.append(
+        CheckResult(
+            "Product metadata",
+            f"ok; version={version}; support={support_email}",
+        )
     )
 
     status, _, body = fetch(normalized_web_url, timeout=timeout, opener=opener)

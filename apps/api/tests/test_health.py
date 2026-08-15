@@ -440,7 +440,10 @@ def test_product_scope() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["supported_opportunities"] == ["Master's", "PhD"]
-    assert payload["phase"] == "Sprint 16 — Security and reliability"
+    assert payload["version"] == "0.1.0-beta.1"
+    assert payload["release_channel"] == "free-public-beta"
+    assert payload["phase"] == "Sprint 17 — Free public beta launch candidate"
+    assert payload["support_email"] is None
 
 
 def test_upload_document_accepts_valid_pdf() -> None:

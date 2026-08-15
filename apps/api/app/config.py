@@ -43,6 +43,22 @@ class Settings(BaseSettings):
     free_beta_opportunity_limit: int = Field(default=50, ge=1, le=100000)
     free_beta_review_limit: int = Field(default=100, ge=1, le=100000)
     free_beta_task_limit: int = Field(default=200, ge=1, le=100000)
+    product_version: str = Field(
+        default="0.1.0-beta.1",
+        min_length=1,
+        max_length=64,
+        pattern=r"^[A-Za-z0-9._-]+$",
+    )
+    release_channel: Literal["free-public-beta"] = "free-public-beta"
+    support_email: EmailStr | None = None
+    incident_contact_email: EmailStr | None = None
+
+    @field_validator("support_email", "incident_contact_email", mode="before")
+    @classmethod
+    def empty_optional_email_is_none(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
 
     @field_validator("web_origin")
     @classmethod
@@ -102,6 +118,12 @@ class Settings(BaseSettings):
                 raise ValueError("EMAIL_DELIVERY must be smtp when APP_ENV is production")
             if not self.smtp_starttls:
                 raise ValueError("SMTP_STARTTLS must be true when APP_ENV is production")
+            if self.support_email is None:
+                raise ValueError("SUPPORT_EMAIL is required when APP_ENV is production")
+            if self.incident_contact_email is None:
+                raise ValueError(
+                    "INCIDENT_CONTACT_EMAIL is required when APP_ENV is production"
+                )
         return self
 
     model_config = SettingsConfigDict(

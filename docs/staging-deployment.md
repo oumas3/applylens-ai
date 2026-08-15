@@ -124,17 +124,15 @@ The command fails unless all of these contracts hold:
 - API liveness returns `status=ok` in production mode.
 - Responses contain an `X-Request-ID` for log correlation.
 - PostgreSQL and every configured readiness dependency report `ok`.
+- Product metadata reports the expected beta channel, release version, and
+  operator-monitored support address.
 - The public frontend returns the ApplyLens application shell.
 
-Then use a controlled staging account to verify the state-changing flows:
-
-1. Register, sign out, sign in, and change the password.
-2. Upload one TXT and one multi-page PDF; verify extracted text and delete one.
-3. Ingest an opportunity, search its evidence, run eligibility analysis, save the
-   review, compare it, and update a generated task.
-4. Request password recovery, receive the SMTP email, use the link once, and
-   confirm the old password and old sessions no longer work.
-5. Create a second account and confirm it cannot see the first account's data.
+Then complete every item in
+[`staging-acceptance.md`](staging-acceptance.md) with a controlled staging
+account and synthetic files. That record covers the complete state-changing
+workflow, account export and deletion, SMTP recovery, a second-user isolation
+check, and exact-release evidence without storing credentials or private data.
 
 Do not promote the release when an automated check fails, a browser reports a
 TLS warning, SMTP delivery fails, or tenant isolation is uncertain.

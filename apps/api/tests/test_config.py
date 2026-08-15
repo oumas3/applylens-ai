@@ -10,6 +10,8 @@ SMTP_SETTINGS = {
     "smtp_username": "applylens",
     "smtp_password": "test-password",
     "smtp_from_email": "support@example.com",
+    "support_email": "support@example.com",
+    "incident_contact_email": "incident@example.com",
 }
 
 
@@ -32,6 +34,9 @@ def test_retrieval_settings_have_stable_development_defaults() -> None:
     assert settings.free_beta_opportunity_limit == 50
     assert settings.free_beta_review_limit == 100
     assert settings.free_beta_task_limit == 200
+    assert settings.product_version == "0.1.0-beta.1"
+    assert settings.release_channel == "free-public-beta"
+    assert settings.support_email is None
 
 
 def test_retrieval_overlap_must_be_smaller_than_chunk_size() -> None:
@@ -201,3 +206,45 @@ def test_production_requires_encrypted_smtp_transport() -> None:
             smtp_starttls=False,
             **SMTP_SETTINGS,
         )
+
+
+def test_production_requires_public_support_and_incident_contacts() -> None:
+    incomplete_smtp = {
+        key: value
+        for key, value in SMTP_SETTINGS.items()
+        if key not in {"support_email", "incident_contact_email"}
+    }
+    with pytest.raises(ValidationError, match="SUPPORT_EMAIL is required"):
+        Settings(
+            _env_file=None,
+            app_env="production",
+            web_origin="https://app.applylens.example",
+            database_url="postgresql://postgres/applylens",
+            **incomplete_smtp,
+        )
+
+    support_only = {**incomplete_smtp, "support_email": "support@example.com"}
+    with pytest.raises(ValidationError, match="INCIDENT_CONTACT_EMAIL is required"):
+        Settings(
+            _env_file=None,
+            app_env="production",
+            web_origin="https://app.applylens.example",
+            database_url="postgresql://postgres/applylens",
+            **support_only,
+        )
+
+
+def test_blank_development_contacts_are_treated_as_unconfigured() -> None:
+    settings = Settings(
+        _env_file=None,
+        support_email="",
+        incident_contact_email="   ",
+    )
+
+    assert settings.support_email is None
+    assert settings.incident_contact_email is None
+
+
+def test_release_version_rejects_unsafe_characters() -> None:
+    with pytest.raises(ValidationError):
+        Settings(_env_file=None, product_version="beta version<script>")

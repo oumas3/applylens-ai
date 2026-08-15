@@ -37,3 +37,17 @@ def test_production_compose_passes_every_abuse_control_setting() -> None:
         "FREE_BETA_TASK_LIMIT",
     ):
         assert f"{variable}: ${{{variable}:-" in compose
+
+
+def test_production_compose_requires_launch_identity_and_contacts() -> None:
+    compose = (REPOSITORY_ROOT / "docker-compose.production.yml").read_text(
+        encoding="utf-8"
+    )
+
+    assert "PRODUCT_VERSION: ${PRODUCT_VERSION:-0.1.0-beta.1}" in compose
+    assert "RELEASE_CHANNEL: ${RELEASE_CHANNEL:-free-public-beta}" in compose
+    assert "SUPPORT_EMAIL: ${SUPPORT_EMAIL:?Set the public support email}" in compose
+    assert (
+        "INCIDENT_CONTACT_EMAIL: "
+        "${INCIDENT_CONTACT_EMAIL:?Set the incident response email}"
+    ) in compose

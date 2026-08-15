@@ -26,8 +26,8 @@ guarantor of admission or funding.
 | Privacy lifecycle | Explicit external-AI consent, data export, account deletion, and user-facing limitations are verified | Implemented |
 | First-use experience | Real onboarding progress, accessible navigation, responsive UI, empty states, and account-switch isolation pass | Implemented |
 | Public-beta abuse safety | Same-origin write protection, bounded free-use limits, sensitive-route throttling, and consistent password policy pass | Implemented |
-| Launch information | Privacy notice, terms, acceptable-use rules, support route, release metadata, and operator contacts are present | Sprint 17 required |
-| Release verification | Backend, frontend, build, Compose, smoke, migration, backup/restore, and manual acceptance checks all pass | Final release gate |
+| Launch information | Privacy notice, terms, acceptable-use rules, support route, release metadata, and operator contacts are present | Implemented; deployment values required |
+| Release verification | Backend, frontend, build, Compose, smoke, migration, backup/restore, and manual acceptance checks all pass | Local/CI and deployed evidence required |
 
 ## Sprint 16 — security and reliability
 
@@ -69,6 +69,11 @@ Sprint 17 is complete only when all of the following are true:
   password recovery, and account deletion.
 - The final release diff contains no secret, generated build output, or unrelated
   file.
+
+Use [`public-beta-terms.md`](public-beta-terms.md) for the durable public product
+contract and [`staging-acceptance.md`](staging-acceptance.md) for the exact
+release's GO/NO-GO evidence. Repository tests cannot substitute for a real SMTP
+delivery, trusted public TLS, or an isolated restore on the target environment.
 
 ## Final verification commands
 

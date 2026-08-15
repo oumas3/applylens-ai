@@ -22,9 +22,12 @@ from app.security import SecurityHeadersMiddleware, TrustedOriginMiddleware
 
 class ProductInfo(BaseModel):
     name: str
+    version: str
+    release_channel: Literal["free-public-beta"]
     phase: str
     supported_opportunities: list[str]
     promise: str
+    support_email: str | None
 
 
 class ReadinessResponse(BaseModel):
@@ -38,7 +41,7 @@ request_logger = configure_request_logger(settings.log_level)
 
 app = FastAPI(
     title="ApplyLens AI API",
-    version="0.1.0",
+    version=settings.product_version,
     description=(
         "Evidence-based application intelligence for "
         "Master's and PhD candidates."
@@ -131,7 +134,10 @@ def readiness() -> ReadinessResponse | JSONResponse:
 def product() -> ProductInfo:
     return ProductInfo(
         name="ApplyLens AI",
-        phase="Sprint 16 — Security and reliability",
+        version=settings.product_version,
+        release_channel=settings.release_channel,
+        phase="Sprint 17 — Free public beta launch candidate",
         supported_opportunities=["Master's", "PhD"],
         promise="Every decision is backed by evidence or marked unclear.",
+        support_email=str(settings.support_email) if settings.support_email else None,
     )

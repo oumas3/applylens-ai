@@ -25,8 +25,8 @@ criteria on top of the production procedures below.
 
 7. Confirm `GET /health` returns `200` and `GET /health/ready` reports every configured dependency as `ok`.
 
-The repository includes a non-destructive public check for these endpoints and
-the frontend application shell:
+The repository includes a non-destructive public check for these endpoints,
+release/support metadata, and the frontend application shell:
 
 ```powershell
 python deploy/smoke_test.py --web-url https://app.example.com --api-url https://api.example.com
@@ -124,3 +124,32 @@ Point a staging API instance at the restored database and upload volume. Test `/
 Keep the previous application image available. Roll back application containers without deleting either named volume. Database migrations must be backward-compatible with the previous application version or require a documented forward-only recovery plan.
 
 Never use `docker compose down -v` in production: `-v` deletes the database and upload volumes.
+
+## Incident response
+
+Set `INCIDENT_CONTACT_EMAIL` to a monitored private operator address and
+`SUPPORT_EMAIL` to the public user-facing address. The incident contact is not
+returned by the product API. Keep a second communication route for the operator
+outside the application host.
+
+When a security, privacy, availability, or data-integrity incident is suspected:
+
+1. Record the UTC start time, affected release SHA, environment, reporter, and
+   relevant `X-Request-ID` values. Do not copy cookies, reset tokens, document
+   contents, credentials, or full environment files into the incident record.
+2. Limit impact. Disable the affected route or external-AI integration, revoke
+   exposed credentials and active sessions where appropriate, or take the
+   public service offline while preserving database and upload volumes.
+3. Preserve bounded API, proxy, database, and platform logs plus a fresh backup.
+   Restrict access to the responders who need it.
+4. Determine affected users and data, correct the cause, rotate relevant secrets,
+   run migrations if required, and deploy a reviewed immutable revision.
+5. Run the public smoke test and the applicable sections of
+   `staging-acceptance.md`. For data incidents, validate an isolated restore and
+   tenant isolation before reopening access.
+6. Notify affected users or authorities when the applicable operator policy or
+   law requires it. Document the decision, owner, timeline, recovery evidence,
+   and preventive follow-up.
+
+Rollback application containers to the recorded last-known-good revision when
+that reduces risk, but never roll back by deleting or replacing active volumes.

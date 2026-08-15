@@ -196,6 +196,19 @@
   width: min(100%, 460px);
 }
 
+.auth-stack {
+  display: grid;
+  width: min(100%, 960px);
+  gap: 20px;
+  justify-items: center;
+}
+
+.auth-stack .legal-panel {
+  width: 100%;
+  border: 1px solid #e4e7f0;
+  border-radius: 18px;
+}
+
 .auth-actions {
   display: flex;
   gap: 10px;
@@ -382,6 +395,53 @@ a:focus-visible {
   background: #fff;
 }
 
+.legal-panel {
+  padding: 28px max(6vw, 24px);
+  border-bottom: 1px solid #e4e7f0;
+  background: #fff;
+}
+
+.legal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.legal-header h2,
+.legal-grid h3 {
+  margin: 6px 0 0;
+}
+
+.legal-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.legal-grid article {
+  padding: 18px;
+  border: 1px solid #e4e7f0;
+  border-radius: 14px;
+  background: #fbfbfe;
+}
+
+.legal-grid article:last-child {
+  grid-column: 1 / -1;
+}
+
+.legal-grid p {
+  margin: 10px 0 0;
+  color: #5f687a;
+  line-height: 1.55;
+}
+
+.legal-grid a {
+  color: #5b3fd6;
+  font-weight: 700;
+}
+
 .privacy-panel h2,
 .privacy-panel h3 {
   margin: 6px 0 0;
@@ -422,8 +482,17 @@ a:focus-visible {
 
 @media (max-width: 800px) {
   .privacy-panel,
+  .legal-grid,
   .onboarding-steps {
     grid-template-columns: 1fr;
+  }
+
+  .legal-header {
+    flex-direction: column;
+  }
+
+  .legal-grid article:last-child {
+    grid-column: auto;
   }
 
   .onboarding-header {
