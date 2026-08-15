@@ -1,5 +1,6 @@
 import json
 import pytest
+from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from app.main import app
@@ -11,6 +12,7 @@ from app.routers import reviews as reviews_router
 from app.routers import tasks as tasks_router
 from app.routers import profiles as profiles_router
 from app.routers.auth import get_current_user
+from app.security import TrustedOriginMiddleware
 
 from io import BytesIO
 from uuid import UUID
@@ -26,6 +28,7 @@ client = TestClient(app)
 def isolate_persistent_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Keep each test independent from local runtime JSON storage."""
     monkeypatch.setenv("RETRIEVAL_PROVIDER", "lexical")
+    monkeypatch.setenv("AUTH_DATABASE_PATH", str(tmp_path / "auth.db"))
     monkeypatch.setitem(
         app.dependency_overrides,
         get_current_user,
@@ -55,6 +58,173 @@ def isolate_persistent_state(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     opportunities_router.ingested_opportunities.clear()
     opportunities_router._retrieval_cache.clear()
     profiles_router.profiles.clear()
+
+
+def test_api_responses_include_browser_security_headers() -> None:
+    response = client.get("/health")
+
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert response.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+    assert response.headers["permissions-policy"] == (
+        "camera=(), geolocation=(), microphone=()"
+    )
+
+
+def test_cookie_authenticated_write_allows_configured_origin() -> None:
+    response = client.post(
+        "/api/v1/auth/logout",
+        headers={
+            "Cookie": "applylens_session=test-session",
+            "Origin": "http://localhost:5173",
+        },
+    )
+
+    assert response.status_code == 204
+
+
+@pytest.mark.parametrize("source_header", ["Origin", "Referer"])
+def test_cookie_authenticated_write_rejects_untrusted_source(
+    source_header: str,
+) -> None:
+    response = client.post(
+        "/api/v1/auth/logout",
+        headers={
+            "Cookie": "applylens_session=test-session",
+            source_header: "https://attacker.example/path",
+        },
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Request origin is not allowed."}
+    assert response.headers["x-content-type-options"] == "nosniff"
+
+
+def test_production_origin_policy_rejects_missing_source() -> None:
+    protected_app = FastAPI()
+    protected_app.add_middleware(
+        TrustedOriginMiddleware,
+        allowed_origins=["https://app.applylens.example"],
+        require_origin=True,
+    )
+
+    @protected_app.post("/write")
+    def write() -> dict[str, bool]:
+        return {"accepted": True}
+
+    response = TestClient(protected_app).post(
+        "/write",
+        headers={"Cookie": "applylens_session=test-session"},
+    )
+
+    assert response.status_code == 403
+    assert response.json() == {"detail": "Request origin is not allowed."}
+
+
+@pytest.mark.parametrize(
+    ("path", "request_kwargs"),
+    [
+        (
+            "/api/v1/documents",
+            {
+                "files": {
+                    "file": ("profile.txt", b"Candidate profile", "text/plain")
+                }
+            },
+        ),
+        (
+            "/api/v1/opportunities/ingest",
+            {"json": {"title": "PhD in AI", "source_text": "Requirements."}},
+        ),
+        (
+            "/api/v1/opportunities/analyse",
+            {"json": {"title": "PhD in AI"}},
+        ),
+    ],
+)
+def test_authenticated_expensive_actions_return_safe_rate_limit_response(
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    request_kwargs: dict[str, object],
+) -> None:
+    monkeypatch.setattr(
+        "app.rate_limiting.RateLimitService.consume",
+        lambda *_args, **_kwargs: 17,
+    )
+
+    response = client.post(path, **request_kwargs)
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "17"
+    assert response.json() == {"detail": "Too many requests. Try again later."}
+
+
+def test_storage_quotas_are_enforced_per_account(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tasks_router.tasks.clear()
+    for name in (
+        "FREE_BETA_DOCUMENT_LIMIT",
+        "FREE_BETA_OPPORTUNITY_LIMIT",
+        "FREE_BETA_REVIEW_LIMIT",
+        "FREE_BETA_TASK_LIMIT",
+    ):
+        monkeypatch.setenv(name, "1")
+    get_settings.cache_clear()
+
+    other_user = {"id": "other-user", "email": "other@example.com", "is_active": True}
+    monkeypatch.setitem(app.dependency_overrides, get_current_user, lambda: other_user)
+    assert client.post(
+        "/api/v1/documents",
+        files={"file": ("other.txt", b"Other evidence", "text/plain")},
+    ).status_code == 201
+    assert client.post(
+        "/api/v1/opportunities/ingest",
+        json={"title": "Other call", "source_text": "Degree required."},
+    ).status_code == 201
+    assert client.post(
+        "/api/v1/reviews",
+        json={"id": 1, "title": "Other review", "eligibility": "Eligible"},
+    ).status_code == 201
+    assert client.post(
+        "/api/v1/tasks/generate",
+        json={"opportunity_id": "other", "missing_requirements": ["CV"]},
+    ).status_code == 200
+
+    current_user = {"id": "test-user", "email": "test@example.com", "is_active": True}
+    monkeypatch.setitem(app.dependency_overrides, get_current_user, lambda: current_user)
+    assert client.post(
+        "/api/v1/documents",
+        files={"file": ("mine.txt", b"My evidence", "text/plain")},
+    ).status_code == 201
+    assert client.post(
+        "/api/v1/documents",
+        files={"file": ("extra.txt", b"Extra evidence", "text/plain")},
+    ).status_code == 409
+    assert client.post(
+        "/api/v1/opportunities/ingest",
+        json={"title": "My call", "source_text": "Degree required."},
+    ).status_code == 201
+    assert client.post(
+        "/api/v1/opportunities/ingest",
+        json={"title": "Extra call", "source_text": "Degree required."},
+    ).status_code == 409
+    assert client.post(
+        "/api/v1/reviews",
+        json={"id": 2, "title": "My review", "eligibility": "Eligible"},
+    ).status_code == 201
+    assert client.post(
+        "/api/v1/reviews",
+        json={"id": 3, "title": "Extra review", "eligibility": "Eligible"},
+    ).status_code == 409
+    assert client.post(
+        "/api/v1/tasks/generate",
+        json={"opportunity_id": "mine", "missing_requirements": ["CV"]},
+    ).status_code == 200
+    assert client.post(
+        "/api/v1/tasks/generate",
+        json={"opportunity_id": "extra", "missing_requirements": ["Transcript"]},
+    ).status_code == 409
 
 def test_upload_document_rejects_corrupted_pdf() -> None:
     response = client.post(
@@ -270,7 +440,7 @@ def test_product_scope() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["supported_opportunities"] == ["Master's", "PhD"]
-    assert payload["phase"] == "Sprint 15 — Launch onboarding and accessible workspace"
+    assert payload["phase"] == "Sprint 16 — Security and reliability"
 
 
 def test_upload_document_accepts_valid_pdf() -> None:

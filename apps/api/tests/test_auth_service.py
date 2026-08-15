@@ -113,6 +113,46 @@ def test_recording_failure_removes_stale_attempt_rows(tmp_path) -> None:
     assert stale_row is None
 
 
+def test_security_cleanup_removes_expired_records_and_keeps_active_session(
+    tmp_path,
+) -> None:
+    service = AuthService(tmp_path / "auth.db")
+    user = service.create_user("candidate@example.com", "correct horse battery")
+    user_id = str(user["id"])
+    now = datetime(2026, 8, 15, tzinfo=timezone.utc)
+    expired_session = service.create_session(user_id)
+    active_session = service.create_session(user_id)
+    service.create_password_reset_token("candidate@example.com", now=now)
+    stale_key = service.login_attempt_key("candidate@example.com", "192.0.2.1")
+    service.record_failed_login(
+        stale_key,
+        now=now - timedelta(seconds=LOGIN_ATTEMPT_RETENTION_SECONDS + 1),
+    )
+    with service._connect() as connection:
+        connection.execute(
+            "UPDATE sessions SET expires_at = ? WHERE id = ?",
+            ((now - timedelta(seconds=1)).isoformat(), expired_session),
+        )
+        connection.execute(
+            "UPDATE sessions SET expires_at = ? WHERE id = ?",
+            ((now + timedelta(seconds=60)).isoformat(), active_session),
+        )
+        connection.execute(
+            "UPDATE password_reset_tokens SET expires_at = ?",
+            ((now - timedelta(seconds=1)).isoformat(),),
+        )
+
+    deleted = service.cleanup_expired_security_records(now=now)
+
+    assert deleted == {
+        "sessions": 1,
+        "password_reset_tokens": 1,
+        "login_attempts": 1,
+    }
+    assert service.get_user_by_session(active_session, now=now) is not None
+    assert service.get_user_by_session(expired_session, now=now) is None
+
+
 def test_password_reset_token_is_hashed_and_single_use(tmp_path) -> None:
     service = AuthService(tmp_path / "auth.db")
     user = service.create_user("candidate@example.com", "correct horse battery")

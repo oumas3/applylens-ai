@@ -14,6 +14,14 @@ ACCOUNT_PRIVACY_MIGRATION = (
 CANDIDATE_PROFILE_MIGRATION = (
     Path(__file__).resolve().parents[1] / "migrations" / "006_candidate_profiles.sql"
 )
+REQUEST_LIMITS_MIGRATION = (
+    Path(__file__).resolve().parents[1] / "migrations" / "007_request_limits.sql"
+)
+SECURITY_CLEANUP_MIGRATION = (
+    Path(__file__).resolve().parents[1]
+    / "migrations"
+    / "008_security_cleanup_indexes.sql"
+)
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -81,8 +89,25 @@ def test_candidate_profile_migration_is_owned_structured_and_idempotent() -> Non
         assert f"{field} jsonb not null default '[]'::jsonb" in sql
 
 
-def test_compose_mounts_privacy_and_profile_migrations() -> None:
+def test_request_limit_migration_is_idempotent_and_indexed() -> None:
+    sql = REQUEST_LIMITS_MIGRATION.read_text(encoding="utf-8").lower()
+
+    assert "create table if not exists request_limits" in sql
+    assert "limit_key text primary key" in sql
+    assert "create index if not exists request_limits_window_started_idx" in sql
+
+
+def test_security_cleanup_migration_indexes_session_expiry() -> None:
+    sql = SECURITY_CLEANUP_MIGRATION.read_text(encoding="utf-8").lower()
+
+    assert "create index if not exists sessions_expires_at_idx" in sql
+    assert "on sessions (expires_at)" in sql
+
+
+def test_compose_mounts_all_incremental_migrations() -> None:
     for filename in ("docker-compose.yml", "docker-compose.production.yml"):
         compose = (REPOSITORY_ROOT / filename).read_text(encoding="utf-8")
         assert "005_account_privacy.sql:/docker-entrypoint-initdb.d/005_account_privacy.sql:ro" in compose
         assert "006_candidate_profiles.sql:/docker-entrypoint-initdb.d/006_candidate_profiles.sql:ro" in compose
+        assert "007_request_limits.sql:/docker-entrypoint-initdb.d/007_request_limits.sql:ro" in compose
+        assert "008_security_cleanup_indexes.sql:/docker-entrypoint-initdb.d/008_security_cleanup_indexes.sql:ro" in compose

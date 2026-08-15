@@ -4,7 +4,7 @@ from urllib.parse import parse_qs, urlparse
 
 from app.config import get_settings
 from app.main import app
-from app.routers.auth import PASSWORD_RESET_REQUEST_MESSAGE
+from app.routers.auth import PASSWORD_RESET_REQUEST_MESSAGE, get_auth_service
 
 
 @pytest.fixture()
@@ -50,6 +50,61 @@ def test_auth_rejects_duplicate_and_invalid_credentials(auth_client: TestClient)
         "/api/v1/auth/login",
         json={"email": payload["email"], "password": "wrong password"},
     ).status_code == 401
+
+
+def test_registration_requires_twelve_character_password(
+    auth_client: TestClient,
+) -> None:
+    response = auth_client.post(
+        "/api/v1/auth/register",
+        json={"email": "candidate@example.com", "password": "elevenchars"},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("path", "payload"),
+    [
+        (
+            "/api/v1/auth/register",
+            {"email": "candidate@example.com", "password": "correct horse battery"},
+        ),
+        (
+            "/api/v1/auth/password-reset/request",
+            {"email": "candidate@example.com"},
+        ),
+    ],
+)
+def test_public_abuse_sensitive_actions_return_safe_rate_limit_response(
+    auth_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    payload: dict[str, str],
+) -> None:
+    monkeypatch.setattr(
+        "app.rate_limiting.RateLimitService.consume",
+        lambda *_args, **_kwargs: 42,
+    )
+
+    response = auth_client.post(path, json=payload)
+
+    assert response.status_code == 429
+    assert response.headers["Retry-After"] == "42"
+    assert response.json() == {"detail": "Too many requests. Try again later."}
+
+
+def test_login_keeps_compatibility_with_existing_eight_character_passwords(
+    auth_client: TestClient,
+) -> None:
+    get_auth_service().create_user("legacy@example.com", "12345678")
+
+    response = auth_client.post(
+        "/api/v1/auth/login",
+        json={"email": "legacy@example.com", "password": "12345678"},
+    )
+
+    assert response.status_code == 200
 
 
 def test_current_user_requires_a_session(auth_client: TestClient) -> None:

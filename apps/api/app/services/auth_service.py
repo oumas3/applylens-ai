@@ -68,6 +68,7 @@ class AuthService:
                     created_at TEXT NOT NULL
                 );
                 CREATE INDEX IF NOT EXISTS sessions_user_id_idx ON sessions(user_id);
+                CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at);
                 CREATE TABLE IF NOT EXISTS login_attempts (
                     attempt_key TEXT PRIMARY KEY,
                     failed_attempts INTEGER NOT NULL,
@@ -132,10 +133,10 @@ class AuthService:
         *,
         postgres: bool,
         now: datetime,
-    ) -> None:
+    ) -> int:
         placeholder = "%s" if postgres else "?"
         cutoff = now - timedelta(seconds=LOGIN_ATTEMPT_RETENTION_SECONDS)
-        connection.execute(
+        cursor = connection.execute(
             f"""
             DELETE FROM login_attempts
             WHERE window_started < {placeholder}
@@ -143,6 +144,36 @@ class AuthService:
             """,
             (cutoff.isoformat(), now.isoformat()),
         )
+        return cursor.rowcount
+
+    def cleanup_expired_security_records(
+        self,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, int]:
+        current_time = now or datetime.now(timezone.utc)
+        postgres = bool(self.database_url)
+        connection_factory = self._postgres if postgres else self._connect
+        placeholder = "%s" if postgres else "?"
+        with connection_factory() as connection:
+            sessions = connection.execute(
+                f"DELETE FROM sessions WHERE expires_at <= {placeholder}",
+                (current_time.isoformat(),),
+            ).rowcount
+            reset_tokens = connection.execute(
+                f"DELETE FROM password_reset_tokens WHERE expires_at <= {placeholder}",
+                (current_time.isoformat(),),
+            ).rowcount
+            login_attempts = self._cleanup_login_attempts(
+                connection,
+                postgres=postgres,
+                now=current_time,
+            )
+        return {
+            "sessions": sessions,
+            "password_reset_tokens": reset_tokens,
+            "login_attempts": login_attempts,
+        }
 
     def login_retry_after(
         self,
@@ -353,6 +384,7 @@ class AuthService:
     def create_session(self, user_id: str) -> str:
         session_id = secrets.token_urlsafe(32)
         now = datetime.now(timezone.utc)
+        self.cleanup_expired_security_records(now=now)
         values = (
             session_id,
             user_id,
@@ -683,7 +715,13 @@ class AuthService:
                 )
         return cursor.rowcount == 1
 
-    def get_user_by_session(self, session_id: str) -> dict[str, str | bool] | None:
+    def get_user_by_session(
+        self,
+        session_id: str,
+        *,
+        now: datetime | None = None,
+    ) -> dict[str, str | bool] | None:
+        current_time = now or datetime.now(timezone.utc)
         query = """
                 SELECT users.id, users.email, users.is_active,
                        users.external_ai_consent, sessions.expires_at
@@ -712,7 +750,7 @@ class AuthService:
             expires_at = datetime.fromisoformat(expires_at)
         if expires_at.tzinfo is None:
             expires_at = expires_at.replace(tzinfo=timezone.utc)
-        if expires_at <= datetime.now(timezone.utc):
+        if expires_at <= current_time:
             self.delete_session(session_id)
             return None
         return {

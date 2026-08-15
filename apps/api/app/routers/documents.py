@@ -10,6 +10,8 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
+from app.rate_limiting import enforce_rate_limit
+from app.quotas import enforce_account_quota
 from app.services.document_service import (
     DocumentExtractionError,
     DocumentService,
@@ -154,6 +156,11 @@ async def upload_document(
     category: str | None = None,
     user: dict[str, str | bool] = Depends(get_current_user),
 ) -> DocumentMetadata:
+    enforce_rate_limit("document_upload", str(user["id"]))
+    owned_document_count = sum(
+        document.user_id == user["id"] for document in documents.values()
+    )
+    enforce_account_quota("document", owned_document_count + 1)
     filename = file.filename or "document.pdf"
     category_value = category or "OTHER"
 

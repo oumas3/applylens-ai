@@ -555,6 +555,34 @@ export default function App() {
     }
   }
 
+  async function deleteTask(taskId: number) {
+    try {
+      const response = await apiFetch(`${API_URL}/api/v1/tasks/${taskId}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) throw new Error('Unable to delete task.')
+      setTasks((current) => current.filter((task) => task.id !== taskId))
+      setUploadStatus('Task deleted.')
+    } catch (error) {
+      setUploadStatus(error instanceof Error ? error.message : 'Unable to delete task.')
+    }
+  }
+
+  async function deleteReview(reviewId: number) {
+    try {
+      const response = await apiFetch(`${API_URL}/api/v1/reviews/${reviewId}`, {
+        method: 'DELETE',
+      })
+      if (!response.ok) throw new Error('Unable to delete review.')
+      setReviews((current) => current.filter((review) => review.id !== reviewId))
+      setSelectedReviewIds((current) => current.filter((id) => id !== reviewId))
+      setComparison(null)
+      setUploadStatus('Review deleted.')
+    } catch (error) {
+      setUploadStatus(error instanceof Error ? error.message : 'Unable to delete review.')
+    }
+  }
+
   useEffect(() => {
     if (!authUser) return
     const controller = new AbortController()
@@ -952,7 +980,7 @@ async function handlePreviewText(
 
       const payload: AnalysisResult = await response.json()
       setAnalysisResult(payload)
-      setAnalysisStatus(`Review ready for ${payload.title}.`)
+      const persistenceWarnings: string[] = []
 
       const tasksResponse = await apiFetch(`${API_URL}/api/v1/tasks/generate`, {
         method: 'POST',
@@ -968,6 +996,9 @@ async function handlePreviewText(
       if (tasksResponse.ok) {
         const generatedTasks: TaskItem[] = await tasksResponse.json()
         setTasks(generatedTasks)
+      } else {
+        const taskError = await tasksResponse.json().catch(() => null)
+        persistenceWarnings.push(taskError?.detail ?? 'Tasks could not be saved.')
       }
 
       const reviewPayload: OpportunityReview = {
@@ -980,13 +1011,25 @@ async function handlePreviewText(
         funding: payload.funding ?? null,
       }
 
-      await apiFetch(`${API_URL}/api/v1/reviews`, {
+      const reviewResponse = await apiFetch(`${API_URL}/api/v1/reviews`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(reviewPayload),
       })
 
-      setReviews((current) => [reviewPayload, ...current])
+      if (reviewResponse.ok) {
+        const savedReview: OpportunityReview = await reviewResponse.json()
+        setReviews((current) => [savedReview, ...current])
+      } else {
+        const reviewError = await reviewResponse.json().catch(() => null)
+        persistenceWarnings.push(reviewError?.detail ?? 'Review could not be saved.')
+      }
+
+      setAnalysisStatus(
+        persistenceWarnings.length
+          ? `Analysis ready for ${payload.title}. ${persistenceWarnings.join(' ')}`
+          : `Review ready for ${payload.title}.`
+      )
     } catch (error) {
       setAnalysisResult(null)
       setAnalysisStatus(
@@ -1038,8 +1081,8 @@ async function handlePreviewText(
                 <input type="email" autoComplete="email" value={authEmail} onChange={(event) => setAuthEmail(event.target.value)} required />
               </label>
               <label className="upload-field">
-                <span>Password</span>
-                <input type="password" autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} minLength={8} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} required />
+                <span>{authMode === 'login' ? 'Password' : 'Password (at least 12 characters)'}</span>
+                <input type="password" autoComplete={authMode === 'login' ? 'current-password' : 'new-password'} minLength={authMode === 'login' ? 8 : 12} value={authPassword} onChange={(event) => setAuthPassword(event.target.value)} required />
               </label>
               <button type="submit">{authMode === 'login' ? 'Sign in' : 'Create account'}</button>
             </form>
@@ -1786,6 +1829,9 @@ async function handlePreviewText(
                     <option value="in_progress">In progress</option>
                     <option value="completed">Completed</option>
                   </select>
+                  <button type="button" className="ghost" onClick={() => void deleteTask(task.id)}>
+                    Delete
+                  </button>
                 </li>
               ))}
             </ul>
@@ -1854,6 +1900,9 @@ async function handlePreviewText(
                     </p>
                   </div>
                   <strong>{review.eligibility}</strong>
+                  <button type="button" className="ghost" onClick={() => void deleteReview(review.id)}>
+                    Delete
+                  </button>
                 </li>
               ))}
               </ul>

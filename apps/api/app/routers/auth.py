@@ -7,6 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Cookie, Depends, HTTPException, 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field
 
 from app.config import get_settings
+from app.rate_limiting import client_identity, enforce_rate_limit
 from app.services.auth_service import AuthService, SESSION_MAX_AGE_SECONDS
 from app.services.email_service import PasswordResetEmailSender
 
@@ -19,11 +20,18 @@ logger = logging.getLogger("applylens.auth")
 router = APIRouter(prefix="/api/v1/auth", tags=["auth"])
 
 
-class AuthRequest(BaseModel):
+class LoginRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
     email: EmailStr
     password: str = Field(..., min_length=8, max_length=128)
+
+
+class RegistrationRequest(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    email: EmailStr
+    password: str = Field(..., min_length=12, max_length=128)
 
 
 class UserResponse(BaseModel):
@@ -96,7 +104,12 @@ def get_current_user(
 
 
 @router.post("/register", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
-def register(request: AuthRequest, response: Response) -> UserResponse:
+def register(
+    request: RegistrationRequest,
+    http_request: Request,
+    response: Response,
+) -> UserResponse:
+    enforce_rate_limit("registration", client_identity(http_request))
     service = get_auth_service()
     try:
         user = service.create_user(request.email.lower(), request.password)
@@ -108,7 +121,7 @@ def register(request: AuthRequest, response: Response) -> UserResponse:
 
 @router.post("/login", response_model=UserResponse)
 def login(
-    credentials: AuthRequest,
+    credentials: LoginRequest,
     http_request: Request,
     response: Response,
 ) -> UserResponse:
@@ -171,8 +184,10 @@ def change_password(
 )
 def request_password_reset(
     request: PasswordResetRequest,
+    http_request: Request,
     background_tasks: BackgroundTasks,
 ) -> MessageResponse:
+    enforce_rate_limit("password_reset", client_identity(http_request))
     settings = get_settings()
     token = get_auth_service().create_password_reset_token(request.email.lower())
     if token is not None:

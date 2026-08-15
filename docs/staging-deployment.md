@@ -82,6 +82,10 @@ docker compose --env-file /etc/applylens/staging.env -f docker-compose.productio
 docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U applylens -d applylens -f /docker-entrypoint-initdb.d/002_application_data.sql
 docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U applylens -d applylens -f /docker-entrypoint-initdb.d/003_login_attempts.sql
 docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U applylens -d applylens -f /docker-entrypoint-initdb.d/004_password_reset_tokens.sql
+docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U applylens -d applylens -f /docker-entrypoint-initdb.d/005_account_privacy.sql
+docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U applylens -d applylens -f /docker-entrypoint-initdb.d/006_candidate_profiles.sql
+docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U applylens -d applylens -f /docker-entrypoint-initdb.d/007_request_limits.sql
+docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U applylens -d applylens -f /docker-entrypoint-initdb.d/008_security_cleanup_indexes.sql
 ```
 
 Replace `applylens` in the `-U` and `-d` arguments when `POSTGRES_USER` or

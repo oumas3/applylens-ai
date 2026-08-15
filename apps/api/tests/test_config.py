@@ -22,6 +22,16 @@ def test_retrieval_settings_have_stable_development_defaults() -> None:
     assert settings.retrieval_provider == "lexical"
     assert settings.retrieval_storage == "memory"
     assert settings.log_level == "INFO"
+    assert settings.rate_limit_window_seconds == 60
+    assert settings.registration_rate_limit == 5
+    assert settings.password_reset_rate_limit == 5
+    assert settings.document_upload_rate_limit == 10
+    assert settings.opportunity_ingest_rate_limit == 20
+    assert settings.opportunity_analysis_rate_limit == 30
+    assert settings.free_beta_document_limit == 25
+    assert settings.free_beta_opportunity_limit == 50
+    assert settings.free_beta_review_limit == 100
+    assert settings.free_beta_task_limit == 200
 
 
 def test_retrieval_overlap_must_be_smaller_than_chunk_size() -> None:

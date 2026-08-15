@@ -14,6 +14,8 @@ from pypdf.errors import PdfReadError
 from typing import Literal
 
 from app.config import get_settings
+from app.rate_limiting import enforce_rate_limit
+from app.quotas import enforce_account_quota
 from app.routers.auth import get_current_user
 from app.routers.documents import documents, file_storage, read_upload_bytes
 from app.routers.profiles import profile_evidence, profiles, referenced_document_ids
@@ -416,6 +418,12 @@ def ingest_opportunity(
     request: OpportunityIngestRequest,
     user: dict[str, str | bool] = Depends(get_current_user),
 ) -> OpportunityRecord:
+    enforce_rate_limit("opportunity_ingest", str(user["id"]))
+    owned_opportunity_count = sum(
+        opportunity.user_id == user["id"]
+        for opportunity in ingested_opportunities
+    )
+    enforce_account_quota("opportunity", owned_opportunity_count + 1)
     extracted_deadline, extracted_deadline_date = _extract_deadline(request.source_text)
     opportunity = OpportunityRecord(
         id=str(uuid4()),
@@ -697,6 +705,7 @@ def analyse_opportunity(
     request: OpportunityAnalysisRequest,
     user: dict[str, str | bool] = Depends(get_current_user),
 ) -> OpportunityAnalysisResponse:
+    enforce_rate_limit("opportunity_analysis", str(user["id"]))
     normalized_requirements = [item.strip() for item in request.requirements if item and item.strip()]
     normalized_evidence = [item.strip() for item in request.evidence if item and item.strip()]
     normalized_evidence.extend(_document_evidence(request.document_ids, str(user["id"])))

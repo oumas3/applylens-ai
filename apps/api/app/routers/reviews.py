@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.routers.auth import get_current_user
 from app.config import get_settings
 from app.services.application_store import PostgresApplicationStore
+from app.quotas import enforce_account_quota
 from typing import Literal
 
 REVIEWS_FILE = Path(__file__).resolve().parents[2] / "storage" / "reviews.json"
@@ -100,10 +101,29 @@ def save_review(
     review: OpportunityReview,
     user: dict[str, str | bool] = Depends(get_current_user),
 ) -> OpportunityReview:
+    owned_review_count = sum(item.user_id == user["id"] for item in reviews)
+    enforce_account_quota("review", owned_review_count + 1)
     review.user_id = str(user["id"])
     reviews.append(review)
     _persist_reviews(str(user["id"]))
     return review
+
+
+@router.delete("/{review_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_review(
+    review_id: int,
+    user: dict[str, str | bool] = Depends(get_current_user),
+) -> None:
+    for index, review in enumerate(reviews):
+        if review.id == review_id and review.user_id == user["id"]:
+            reviews.pop(index)
+            _persist_reviews(str(user["id"]))
+            return
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Review not found.",
+    )
 
 
 @router.post(

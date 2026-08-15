@@ -16,6 +16,8 @@ services:
       - ./apps/api/migrations/004_password_reset_tokens.sql:/docker-entrypoint-initdb.d/004_password_reset_tokens.sql:ro
       - ./apps/api/migrations/005_account_privacy.sql:/docker-entrypoint-initdb.d/005_account_privacy.sql:ro
       - ./apps/api/migrations/006_candidate_profiles.sql:/docker-entrypoint-initdb.d/006_candidate_profiles.sql:ro
+      - ./apps/api/migrations/007_request_limits.sql:/docker-entrypoint-initdb.d/007_request_limits.sql:ro
+      - ./apps/api/migrations/008_security_cleanup_indexes.sql:/docker-entrypoint-initdb.d/008_security_cleanup_indexes.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U applylens -d applylens"]
       interval: 5s

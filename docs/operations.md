@@ -10,7 +10,7 @@ criteria on top of the production procedures below.
 1. Copy `deploy/production.env.example` to a secure file outside the repository.
 2. Replace the database password, both public HTTPS URLs, and all SMTP placeholders. URL-encode special characters in `DATABASE_URL`.
 3. Put an HTTPS reverse proxy or load balancer in front of the web and API ports. They bind to `127.0.0.1` by default; change `BIND_ADDRESS` only when the host network is protected appropriately.
-4. Set `FORWARDED_ALLOW_IPS` to the proxy address or CIDR seen by the API container. Login throttling uses the trusted client address. Do not use `*` when untrusted clients can reach the API directly.
+4. Set `FORWARDED_ALLOW_IPS` to the proxy address or CIDR seen by the API container. Login, registration, and password-reset throttling use the trusted client address. Do not use `*` when untrusted clients can reach the API directly.
 5. Validate the deployment configuration:
 
    ```powershell
@@ -53,6 +53,21 @@ migrations before updating the API:
 docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml exec -T postgres psql -U applylens -d applylens -f /docker-entrypoint-initdb.d/005_account_privacy.sql
 docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml exec -T postgres psql -U applylens -d applylens -f /docker-entrypoint-initdb.d/006_candidate_profiles.sql
 ```
+
+For Sprint 16, apply the persistent request-limit migration before updating
+the API:
+
+```powershell
+docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml exec -T postgres psql -U applylens -d applylens -f /docker-entrypoint-initdb.d/007_request_limits.sql
+docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml exec -T postgres psql -U applylens -d applylens -f /docker-entrypoint-initdb.d/008_security_cleanup_indexes.sql
+```
+
+The `*_RATE_LIMIT` variables define requests allowed per configured
+`RATE_LIMIT_WINDOW_SECONDS`. Registration and password reset are limited by
+trusted client address; uploads, ingestion, and analysis are limited by account.
+The `FREE_BETA_*_LIMIT` variables cap each account's stored documents,
+opportunities, reviews, and tasks. Raising them changes product capacity without
+requiring a code deployment.
 
 Adjust the database user and name if the production environment overrides their defaults.
 

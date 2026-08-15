@@ -33,6 +33,16 @@ class Settings(BaseSettings):
     smtp_password: SecretStr | None = None
     smtp_from_email: EmailStr | None = None
     smtp_starttls: bool = True
+    rate_limit_window_seconds: int = Field(default=60, ge=1, le=86400)
+    registration_rate_limit: int = Field(default=5, ge=1, le=10000)
+    password_reset_rate_limit: int = Field(default=5, ge=1, le=10000)
+    document_upload_rate_limit: int = Field(default=10, ge=1, le=10000)
+    opportunity_ingest_rate_limit: int = Field(default=20, ge=1, le=10000)
+    opportunity_analysis_rate_limit: int = Field(default=30, ge=1, le=10000)
+    free_beta_document_limit: int = Field(default=25, ge=1, le=100000)
+    free_beta_opportunity_limit: int = Field(default=50, ge=1, le=100000)
+    free_beta_review_limit: int = Field(default=100, ge=1, le=100000)
+    free_beta_task_limit: int = Field(default=200, ge=1, le=100000)
 
     @field_validator("web_origin")
     @classmethod

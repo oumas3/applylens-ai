@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.routers.auth import get_current_user
 from app.config import get_settings
 from app.services.application_store import PostgresApplicationStore
+from app.quotas import enforce_account_quota
 
 router = APIRouter(
     prefix="/api/v1/tasks",
@@ -126,13 +127,18 @@ def generate_tasks(
     next_id = max((task.id for task in owned_tasks), default=0) + 1
 
     if request.opportunity_id:
-        tasks[:] = [
+        retained_tasks = [
             task for task in tasks
             if not (task.user_id == user["id"] and task.opportunity_id == request.opportunity_id)
         ]
     else:
         next_id = 1
-        tasks[:] = [task for task in tasks if task.user_id != user["id"]]
+        retained_tasks = [task for task in tasks if task.user_id != user["id"]]
+
+    retained_owned_count = sum(
+        task.user_id == user["id"] for task in retained_tasks
+    )
+    enforce_account_quota("task", retained_owned_count + len(task_titles))
 
     for offset, title in enumerate(task_titles):
         generated_tasks.append(
@@ -145,6 +151,7 @@ def generate_tasks(
             )
         )
 
+    tasks[:] = retained_tasks
     tasks.extend(generated_tasks)
     _persist_tasks(str(user["id"]))
     return [task for task in tasks if task.user_id == user["id"]] if request.opportunity_id is None else generated_tasks
@@ -166,6 +173,23 @@ def update_task_status(
             tasks[index] = updated_task
             _persist_tasks(str(user["id"]))
             return updated_task
+
+    raise HTTPException(
+        status_code=status.HTTP_404_NOT_FOUND,
+        detail="Task not found.",
+    )
+
+
+@router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task(
+    task_id: int,
+    user: dict[str, str | bool] = Depends(get_current_user),
+) -> None:
+    for index, task in enumerate(tasks):
+        if task.id == task_id and task.user_id == user["id"]:
+            tasks.pop(index)
+            _persist_tasks(str(user["id"]))
+            return
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,

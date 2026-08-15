@@ -17,6 +17,7 @@ from app.observability import (
     UnhandledExceptionMiddleware,
     configure_request_logger,
 )
+from app.security import SecurityHeadersMiddleware, TrustedOriginMiddleware
 
 
 class ProductInfo(BaseModel):
@@ -53,6 +54,12 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["Retry-After", "X-Request-ID"],
 )
+app.add_middleware(
+    TrustedOriginMiddleware,
+    allowed_origins=settings.web_origins,
+    require_origin=settings.app_env == "production",
+)
+app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(RequestObservabilityMiddleware, logger=request_logger)
 app.include_router(documents_router)
 app.include_router(opportunities_router)
@@ -124,7 +131,7 @@ def readiness() -> ReadinessResponse | JSONResponse:
 def product() -> ProductInfo:
     return ProductInfo(
         name="ApplyLens AI",
-        phase="Sprint 15 — Launch onboarding and accessible workspace",
+        phase="Sprint 16 — Security and reliability",
         supported_opportunities=["Master's", "PhD"],
         promise="Every decision is backed by evidence or marked unclear.",
     )

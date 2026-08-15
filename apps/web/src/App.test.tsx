@@ -150,6 +150,52 @@ describe('ApplyLens UI', () => {
     )
   })
 
+  it('keeps analysis visible and reports quota failures when persistence is rejected', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/opportunities/analyse')) {
+        return Promise.resolve(
+          responseFor({
+            title: 'PhD in AI',
+            institution: null,
+            degree_type: 'PhD',
+            eligibility: 'Eligible',
+            matched_requirements: [],
+            missing_requirements: [],
+            evidence_summary: [],
+            requirement_results: [],
+            deadline: null,
+            deadline_date: null,
+            funding: null,
+            funding_status: 'unclear',
+            required_documents: [],
+          })
+        )
+      }
+      if (url.endsWith('/api/v1/tasks/generate')) {
+        return Promise.resolve(responseFor({ detail: 'Free beta task limit reached.' }, 409))
+      }
+      if (url.endsWith('/api/v1/reviews') && init?.method === 'POST') {
+        return Promise.resolve(responseFor({ detail: 'Free beta review limit reached.' }, 409))
+      }
+      return Promise.resolve(defaultFetchResponse(url, init?.method ?? 'GET'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    await waitFor(() => expect(screen.getByText(/API CONNECTED/)).toBeInTheDocument())
+    fireEvent.click(screen.getByRole('button', { name: 'Analyse opportunity' }))
+
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          'Analysis ready for PhD in AI. Free beta task limit reached. Free beta review limit reached.'
+        )
+      ).toBeInTheDocument()
+    )
+    expect(screen.getAllByText('Eligible').length).toBeGreaterThan(0)
+  })
+
   it('changes the password from the account security panel', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
@@ -384,6 +430,81 @@ describe('ApplyLens UI', () => {
       await Promise.resolve()
     })
     expect(screen.queryByText('Private first-account task')).not.toBeInTheDocument()
+  })
+
+  it('communicates the stronger password rule when registering', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+        if (String(input).endsWith('/api/v1/auth/me')) {
+          return Promise.resolve(responseFor({ detail: 'Authentication required.' }, 401))
+        }
+        return Promise.resolve(defaultFetchResponse(String(input), init?.method ?? 'GET'))
+      })
+    )
+
+    render(<App />)
+    await screen.findByText('Welcome back.')
+    fireEvent.click(screen.getByRole('button', { name: 'Need an account? Register' }))
+
+    expect(screen.getByText('Create your workspace.')).toBeInTheDocument()
+    expect(screen.getByLabelText('Password (at least 12 characters)')).toHaveAttribute(
+      'minlength',
+      '12'
+    )
+  })
+
+  it('deletes individual tasks and reviews from the workspace', async () => {
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input)
+      if (url.endsWith('/api/v1/tasks') && (init?.method ?? 'GET') === 'GET') {
+        return Promise.resolve(
+          responseFor([
+            { id: 7, opportunity_id: null, title: 'Private task', status: 'pending' },
+          ])
+        )
+      }
+      if (url.endsWith('/api/v1/reviews') && (init?.method ?? 'GET') === 'GET') {
+        return Promise.resolve(
+          responseFor([
+            {
+              id: 9,
+              title: 'Private review',
+              eligibility: 'Eligible',
+              matched_requirements: [],
+              missing_requirements: [],
+            },
+          ])
+        )
+      }
+      if (
+        (url.endsWith('/api/v1/tasks/7') || url.endsWith('/api/v1/reviews/9')) &&
+        init?.method === 'DELETE'
+      ) {
+        return Promise.resolve(responseFor({}, 204))
+      }
+      return Promise.resolve(defaultFetchResponse(url, init?.method ?? 'GET'))
+    })
+    vi.stubGlobal('fetch', fetchMock)
+
+    render(<App />)
+    const task = (await screen.findByText('Private task')).closest('li')
+    const review = (await screen.findByText('Private review')).closest('li')
+    if (!task || !review) throw new Error('Expected task and review list items.')
+
+    fireEvent.click(within(task).getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(screen.queryByText('Private task')).not.toBeInTheDocument())
+    fireEvent.click(within(review).getByRole('button', { name: 'Delete' }))
+    await waitFor(() => expect(screen.queryByText('Private review')).not.toBeInTheDocument())
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/v1/tasks/7'),
+      expect.objectContaining({ method: 'DELETE' })
+    )
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining('/api/v1/reviews/9'),
+      expect.objectContaining({ method: 'DELETE' })
+    )
   })
 
   it('permanently deletes the account after explicit confirmation', async () => {

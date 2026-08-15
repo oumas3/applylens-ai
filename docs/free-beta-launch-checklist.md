@@ -20,12 +20,12 @@ guarantor of admission or funding.
 | Gate | Required evidence | Status |
 | --- | --- | --- |
 | Private accounts and recovery | Authentication, session, throttling, password-change, and one-time reset tests pass | Implemented |
-| Tenant isolation | Cross-user document, opportunity, profile, review, task, export, and deletion tests pass | Opportunities, profiles, export, and deletion are proven; final CRUD matrix required |
+| Tenant isolation | Cross-user document, opportunity, profile, review, task, export, and deletion tests pass | Implemented with explicit two-user CRUD matrix |
 | Evidence workflow | Upload, extraction, citations, retrieval, eligibility, profile evidence, reviews, and task tests pass | Implemented |
 | Durable production data | PostgreSQL schema readiness, file storage, migration, backup, and restore procedures are verified | Implemented; final restore drill required |
 | Privacy lifecycle | Explicit external-AI consent, data export, account deletion, and user-facing limitations are verified | Implemented |
-| First-use experience | Real onboarding progress, accessible navigation, responsive UI, empty states, and account-switch isolation pass | Sprint 15 ready for commit |
-| Public-beta abuse safety | Same-origin write protection, bounded free-use limits, sensitive-route throttling, and consistent password policy pass | Sprint 16 required |
+| First-use experience | Real onboarding progress, accessible navigation, responsive UI, empty states, and account-switch isolation pass | Implemented |
+| Public-beta abuse safety | Same-origin write protection, bounded free-use limits, sensitive-route throttling, and consistent password policy pass | Implemented |
 | Launch information | Privacy notice, terms, acceptable-use rules, support route, release metadata, and operator contacts are present | Sprint 17 required |
 | Release verification | Backend, frontend, build, Compose, smoke, migration, backup/restore, and manual acceptance checks all pass | Final release gate |
 

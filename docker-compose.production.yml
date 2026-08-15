@@ -16,6 +16,8 @@ services:
       - ./apps/api/migrations/004_password_reset_tokens.sql:/docker-entrypoint-initdb.d/004_password_reset_tokens.sql:ro
       - ./apps/api/migrations/005_account_privacy.sql:/docker-entrypoint-initdb.d/005_account_privacy.sql:ro
       - ./apps/api/migrations/006_candidate_profiles.sql:/docker-entrypoint-initdb.d/006_candidate_profiles.sql:ro
+      - ./apps/api/migrations/007_request_limits.sql:/docker-entrypoint-initdb.d/007_request_limits.sql:ro
+      - ./apps/api/migrations/008_security_cleanup_indexes.sql:/docker-entrypoint-initdb.d/008_security_cleanup_indexes.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
@@ -36,6 +38,16 @@ services:
       DATABASE_URL: ${DATABASE_URL:?Set the PostgreSQL connection URL}
       LOG_LEVEL: ${LOG_LEVEL:-INFO}
       FORWARDED_ALLOW_IPS: ${FORWARDED_ALLOW_IPS:-127.0.0.1}
+      RATE_LIMIT_WINDOW_SECONDS: ${RATE_LIMIT_WINDOW_SECONDS:-60}
+      REGISTRATION_RATE_LIMIT: ${REGISTRATION_RATE_LIMIT:-5}
+      PASSWORD_RESET_RATE_LIMIT: ${PASSWORD_RESET_RATE_LIMIT:-5}
+      DOCUMENT_UPLOAD_RATE_LIMIT: ${DOCUMENT_UPLOAD_RATE_LIMIT:-10}
+      OPPORTUNITY_INGEST_RATE_LIMIT: ${OPPORTUNITY_INGEST_RATE_LIMIT:-20}
+      OPPORTUNITY_ANALYSIS_RATE_LIMIT: ${OPPORTUNITY_ANALYSIS_RATE_LIMIT:-30}
+      FREE_BETA_DOCUMENT_LIMIT: ${FREE_BETA_DOCUMENT_LIMIT:-25}
+      FREE_BETA_OPPORTUNITY_LIMIT: ${FREE_BETA_OPPORTUNITY_LIMIT:-50}
+      FREE_BETA_REVIEW_LIMIT: ${FREE_BETA_REVIEW_LIMIT:-100}
+      FREE_BETA_TASK_LIMIT: ${FREE_BETA_TASK_LIMIT:-200}
       EMAIL_DELIVERY: ${EMAIL_DELIVERY:?Set EMAIL_DELIVERY to smtp}
       SMTP_HOST: ${SMTP_HOST:?Set the SMTP server hostname}
       SMTP_PORT: ${SMTP_PORT:-587}

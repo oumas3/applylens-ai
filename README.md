@@ -133,6 +133,17 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 - Explain empty task and review states with direct next actions.
 - Verify onboarding progress, navigation, account switching, and the production build.
 
+### Sprint 16 — Security and reliability
+
+- Reject untrusted cookie-authenticated browser writes and attach defensive API
+  and HTTPS-proxy response headers.
+- Apply consistent password strength, persistent sensitive-action throttling,
+  and configurable per-account free-beta quotas.
+- Support tenant-scoped task and review deletion with a complete two-user CRUD
+  isolation matrix.
+- Opportunistically remove expired sessions, reset tokens, login attempts, and
+  request-limit records using indexed SQLite/PostgreSQL storage.
+
 The default retrieval implementation remains local and deterministic, so the MVP
 works without external services. Production deployments can opt into OpenAI
 embeddings and PostgreSQL/pgvector using the configuration below.
@@ -143,7 +154,9 @@ The pgvector migration is at `apps/api/migrations/001_pgvector.sql`, and
 application/authentication tables start in
 `apps/api/migrations/002_application_data.sql`. Account privacy and candidate
 profiles are added by migrations `005_account_privacy.sql` and
-`006_candidate_profiles.sql`.
+`006_candidate_profiles.sql`. Persistent abuse controls use
+`007_request_limits.sql`, with security cleanup indexes in
+`008_security_cleanup_indexes.sql`.
 It creates a persistent `opportunity_chunks` table for OpenAI
 `text-embedding-3-small` vectors and a cosine-similarity HNSW index. Applying
 it requires PostgreSQL with the `pgvector` extension installed; local retrieval
