@@ -14,6 +14,7 @@ from pypdf.errors import PdfReadError
 from typing import Literal
 
 from app.config import get_settings
+from app.concurrency import guarded
 from app.rate_limiting import enforce_rate_limit
 from app.quotas import enforce_account_quota
 from app.routers.auth import get_current_user
@@ -419,11 +420,6 @@ def ingest_opportunity(
     user: dict[str, str | bool] = Depends(get_current_user),
 ) -> OpportunityRecord:
     enforce_rate_limit("opportunity_ingest", str(user["id"]))
-    owned_opportunity_count = sum(
-        opportunity.user_id == user["id"]
-        for opportunity in ingested_opportunities
-    )
-    enforce_account_quota("opportunity", owned_opportunity_count + 1)
     extracted_deadline, extracted_deadline_date = _extract_deadline(request.source_text)
     opportunity = OpportunityRecord(
         id=str(uuid4()),
@@ -443,8 +439,16 @@ def ingest_opportunity(
         deadline_date=request.deadline_date or extracted_deadline_date,
         funding=request.funding or _extract_funding(request.source_text),
     )
-    ingested_opportunities.append(opportunity)
-    _persist_opportunities(str(user["id"]))
+
+    # Count-check-append atomically per user; see app/concurrency.py.
+    with guarded("opportunity-quota", str(user["id"])):
+        owned_opportunity_count = sum(
+            item.user_id == user["id"] for item in ingested_opportunities
+        )
+        enforce_account_quota("opportunity", owned_opportunity_count + 1)
+        ingested_opportunities.append(opportunity)
+        _persist_opportunities(str(user["id"]))
+
     return opportunity
 
 

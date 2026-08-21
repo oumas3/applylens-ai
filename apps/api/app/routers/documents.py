@@ -10,6 +10,7 @@ from fastapi.responses import PlainTextResponse
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.config import get_settings
+from app.concurrency import guarded
 from app.rate_limiting import enforce_rate_limit
 from app.quotas import enforce_account_quota
 from app.services.document_service import (
@@ -157,6 +158,12 @@ async def upload_document(
     user: dict[str, str | bool] = Depends(get_current_user),
 ) -> DocumentMetadata:
     enforce_rate_limit("document_upload", str(user["id"]))
+    # Optimistic, non-authoritative pre-check: fail fast for the common
+    # over-quota case before doing any file I/O or text extraction. The
+    # authoritative check happens again, atomically with the insert, right
+    # before we commit -- see the `guarded()` block below. Without that
+    # second check, two concurrent uploads could both pass this early count
+    # and both get written, exceeding the account's quota.
     owned_document_count = sum(
         document.user_id == user["id"] for document in documents.values()
     )
@@ -263,8 +270,18 @@ async def upload_document(
         uploaded_at=datetime.now(timezone.utc),
     )
 
-    documents[document_id] = metadata
-    _persist_documents(str(user["id"]))
+    with guarded("document-quota", str(user["id"])):
+        owned_document_count = sum(
+            document.user_id == user["id"] for document in documents.values()
+        )
+        try:
+            enforce_account_quota("document", owned_document_count + 1)
+        except HTTPException:
+            file_storage.delete(stored_filename)
+            raise
+        documents[document_id] = metadata
+        _persist_documents(str(user["id"]))
+
     return metadata
 
 
