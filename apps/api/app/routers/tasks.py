@@ -6,6 +6,7 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from app.routers.auth import get_current_user
+from app.concurrency import guarded
 from app.config import get_settings
 from app.services.application_store import PostgresApplicationStore
 from app.quotas import enforce_account_quota
@@ -123,37 +124,47 @@ def generate_tasks(
         task_titles.append("Review funding requirements and available support")
 
     generated_tasks: list[TaskItem] = []
-    owned_tasks = [task for task in tasks if task.user_id == user["id"]]
-    next_id = max((task.id for task in owned_tasks), default=0) + 1
 
-    if request.opportunity_id:
+    # Only drop this user's tasks that belong to the *same* scope being
+    # regenerated (same opportunity_id, including the "no opportunity"
+    # bucket when opportunity_id is None). Previously the "no opportunity_id"
+    # branch dropped every task the user owned across *all* opportunities,
+    # silently wiping unrelated task lists on every general (non-file-ingested)
+    # analysis. See Sprint 1 bugfix notes.
+    with guarded("task-quota", str(user["id"])):
         retained_tasks = [
             task for task in tasks
-            if not (task.user_id == user["id"] and task.opportunity_id == request.opportunity_id)
-        ]
-    else:
-        next_id = 1
-        retained_tasks = [task for task in tasks if task.user_id != user["id"]]
-
-    retained_owned_count = sum(
-        task.user_id == user["id"] for task in retained_tasks
-    )
-    enforce_account_quota("task", retained_owned_count + len(task_titles))
-
-    for offset, title in enumerate(task_titles):
-        generated_tasks.append(
-            TaskItem(
-                id=next_id + offset,
-                user_id=str(user["id"]),
-                opportunity_id=request.opportunity_id,
-                title=title,
-                status="pending",
+            if not (
+                task.user_id == user["id"]
+                and task.opportunity_id == request.opportunity_id
             )
-        )
+        ]
 
-    tasks[:] = retained_tasks
-    tasks.extend(generated_tasks)
-    _persist_tasks(str(user["id"]))
+        # Base new ids on what survives this operation, not on tasks that
+        # are about to be replaced -- otherwise regenerating the same scope
+        # repeatedly would skip ever-larger blocks of ids for no reason.
+        retained_owned_tasks = [
+            task for task in retained_tasks if task.user_id == user["id"]
+        ]
+        next_id = max((task.id for task in retained_owned_tasks), default=0) + 1
+
+        enforce_account_quota("task", len(retained_owned_tasks) + len(task_titles))
+
+        for offset, title in enumerate(task_titles):
+            generated_tasks.append(
+                TaskItem(
+                    id=next_id + offset,
+                    user_id=str(user["id"]),
+                    opportunity_id=request.opportunity_id,
+                    title=title,
+                    status="pending",
+                )
+            )
+
+        tasks[:] = retained_tasks
+        tasks.extend(generated_tasks)
+        _persist_tasks(str(user["id"]))
+
     return [task for task in tasks if task.user_id == user["id"]] if request.opportunity_id is None else generated_tasks
 
 

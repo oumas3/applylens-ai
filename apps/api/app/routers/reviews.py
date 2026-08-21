@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, ConfigDict, Field
 from app.routers.auth import get_current_user
+from app.concurrency import guarded
 from app.config import get_settings
 from app.services.application_store import PostgresApplicationStore
 from app.quotas import enforce_account_quota
@@ -101,11 +102,25 @@ def save_review(
     review: OpportunityReview,
     user: dict[str, str | bool] = Depends(get_current_user),
 ) -> OpportunityReview:
-    owned_review_count = sum(item.user_id == user["id"] for item in reviews)
-    enforce_account_quota("review", owned_review_count + 1)
     review.user_id = str(user["id"])
-    reviews.append(review)
-    _persist_reviews(str(user["id"]))
+
+    # `id` is client-supplied (the frontend uses Date.now()). Enforce
+    # uniqueness per-user at write time so a collision can't silently
+    # overwrite/alias another review in delete/compare lookups, and check
+    # the quota atomically with the append so concurrent saves can't both
+    # pass a stale count. See Sprint 1 bugfix notes; Sprint 2 should move
+    # this id to a server-generated UUID.
+    with guarded("review-quota", str(user["id"])):
+        if any(item.id == review.id and item.user_id == user["id"] for item in reviews):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="A review with this id already exists.",
+            )
+        owned_review_count = sum(item.user_id == user["id"] for item in reviews)
+        enforce_account_quota("review", owned_review_count + 1)
+        reviews.append(review)
+        _persist_reviews(str(user["id"]))
+
     return review
 
 
