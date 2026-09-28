@@ -36,6 +36,18 @@ deployment or production-scale validation.
 Pytest emitted one environmental warning because Windows denied writes to the
 existing `.pytest_cache` directory. Test execution itself succeeded.
 
+### Latest verification on 2026-09-28
+
+- [x] Backend suite: 224 passed, with 2 database integration tests skipped
+  because no local PostgreSQL URL was configured.
+- [x] Frontend suite: 18 passed across 2 test files.
+- [x] Frontend TypeScript and production build passed.
+- [x] Deployment smoke-test suite: 7 passed.
+- [x] Project virtual-environment `pip check` reported no broken requirements.
+- [x] The 30-case deterministic evaluation reproduced the recorded accuracy
+  and retrieval metrics.
+- [ ] Docker image build and provider deployment remain unverified locally.
+
 ## Audit findings
 
 ### Implemented and working
@@ -53,7 +65,7 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
   `Insufficient information`, and returns requirement-level evidence.
 - [x] Local JSON/SQLite development persistence and PostgreSQL application
   persistence are implemented as explicit modes.
-- [x] Eight ordered, idempotent SQL migration files are present.
+- [x] Nine ordered, idempotent SQL migration files are present.
 - [x] Structured request logs, request IDs, liveness, readiness, and
   privacy-safe security headers are implemented.
 - [x] GitHub Actions runs Python tests, frontend tests/build, deployment smoke
@@ -75,9 +87,9 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
 - [ ] pgvector retrieval filters by opportunity ID after the route checks
   opportunity ownership. Add database-backed isolation tests so this boundary
   is verified rather than inferred from unit tests.
-- [ ] Local uploaded-file bytes are durable only with the configured Docker
-  volume/single-node filesystem. This is incompatible with ephemeral free-host
-  filesystems unless uploads are restricted or object storage is selected.
+- [x] The restricted demo extracts bounded text into PostgreSQL and discards
+  source bytes, avoiding reliance on the free host's ephemeral filesystem.
+  Self-hosted/local mode can still retain bytes on its configured volume.
 - [ ] The OpenAI embedding adapter has a timeout and mocked tests, but no
   bounded retry policy. Any live-provider test must remain opt-in and funded by
   the operator.
@@ -92,12 +104,11 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
   pgvector, but the default demonstrable path is lexical/in-memory.
 - [ ] Page citations exist for opportunity PDFs. Applicant document evidence
   currently summarizes document-level text rather than page-level provenance.
-- [ ] Operations, staging, backup, rollback, and smoke-test documentation
-  exists for a self-hosted Docker deployment, but no current free-host provider
-  decision or provider-specific configuration has been verified.
-- [ ] The README is substantial, but it needs refreshed screenshots, measured
-  evaluation results, a current architecture diagram, and deployment wording
-  aligned with the eventual free-demo architecture.
+- [x] A dated Render Free plus Neon Free architecture decision, limitations,
+  recovery notes, and provider-specific configuration are documented.
+- [ ] The README now includes measured evaluation results, an architecture
+  diagram, and a fictional sample walkthrough; refreshed screenshots still
+  require a running demo.
 
 ### Absent
 
@@ -106,10 +117,10 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
 - [x] Repeatable deterministic evaluation CLI with saved baseline/comparison
   results for Recall@k, evidence-presence proxy, insufficient-information
   accuracy, structured validity, and local-process latency.
-- [x] Real PostgreSQL/pgvector CI job is configured; remote CI execution is
-  pending until these uncommitted changes are pushed with approval.
-- [ ] Verified free-host architecture and `docs/deployment.md` with dated,
-  official pricing/limit sources.
+- [x] Real PostgreSQL/pgvector CI job is configured and pushed; its remote
+  result still needs to be observed before merge.
+- [x] Free-host architecture and `docs/deployment.md` include dated official
+  pricing/limit sources and strict zero-cost safeguards.
 - [ ] Verified public demo URL and restart/persistence acceptance evidence.
 
 ### Not verified because access or dependencies are missing
@@ -119,16 +130,16 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
   server (database unavailable locally and absent from CI).
 - [ ] SMTP delivery with a real provider (credentials intentionally absent).
 - [ ] OpenAI embeddings with a live API (no paid call was authorized).
-- [ ] Hosting plan/account constraints and deployed behavior (provider access
-  not supplied; official provider research remains pending).
+- [ ] Deployed behavior (provider access was not supplied). Hosting constraints
+  were checked against dated official provider documentation.
 
 ## Highest-risk failure points
 
 1. Process-local collections and locks do not guarantee cross-process freshness
    or quota correctness for a multi-worker deployment.
 2. The new PostgreSQL/pgvector CI job has not yet been observed on GitHub.
-3. Uploaded bytes depend on local persistent storage, which many free web hosts
-   do not provide.
+3. The restricted demo stores extracted text rather than source bytes; users
+   must understand that downloads and OCR are intentionally unavailable.
 4. Rule matching still lacks reliable numeric and synonym handling for GPA,
    work-duration, programming-skill, undergraduate-qualification, and CEFR
    evidence cases recorded in the evaluation report.
@@ -167,9 +178,10 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
   and Recall@3 0.9412.
 - [ ] Improve page-level applicant evidence provenance where evaluation shows
   it matters.
-- [ ] Verify current official free-tier terms before choosing hosting.
-- [ ] Implement provider-specific deployment config without paid resources.
+- [x] Verify current official free-tier terms before choosing hosting.
+- [x] Implement provider-specific deployment config without paid resources.
 - [ ] Deploy only after CI passes and verify the public sample journey,
   isolation, failure states, cold starts, and persistence.
-- [ ] Refresh README evidence, screenshots, demo walkthrough, limitations, and
-  CV bullets from completed—not planned—work.
+- [x] Refresh README evidence, demo walkthrough, limitations, and CV bullets
+  from completed—not planned—work.
+- [ ] Add screenshots after the demo is running and visually verified.

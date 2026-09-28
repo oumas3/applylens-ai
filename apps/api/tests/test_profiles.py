@@ -4,7 +4,6 @@ from fastapi.testclient import TestClient
 from app.main import app
 from app.routers.auth import get_current_user
 from app.routers import documents as documents_router
-from app.routers import opportunities as opportunities_router
 from app.routers import profiles as profiles_router
 from app.services.file_storage import LocalFileStorage
 
@@ -30,7 +29,6 @@ def profile_client(tmp_path, monkeypatch: pytest.MonkeyPatch):
     monkeypatch.setattr(documents_router, "application_store", None)
     storage = LocalFileStorage(tmp_path / "uploads")
     monkeypatch.setattr(documents_router, "file_storage", storage)
-    monkeypatch.setattr(opportunities_router, "file_storage", storage)
     profiles_router.profiles.clear()
     documents_router.documents.clear()
 
