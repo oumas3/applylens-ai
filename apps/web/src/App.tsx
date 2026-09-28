@@ -4,7 +4,8 @@ import LegalInfoPanel, { type ProductInfo } from './LegalInfoPanel'
 import OnboardingPanel from './OnboardingPanel'
 
 const API_URL =
-  import.meta.env.VITE_API_URL ?? `${window.location.protocol}//${window.location.hostname}:8000`
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.PROD ? '' : `${window.location.protocol}//${window.location.hostname}:8000`)
 
 const apiFetch = (input: RequestInfo | URL, init: RequestInit = {}) =>
   fetch(input, { ...init, credentials: 'include' })
@@ -1066,8 +1067,27 @@ async function handlePreviewText(
     }
   }
 
+  function loadFictionalSample() {
+    setAnalysisTitle('PhD in Responsible AI')
+    setAnalysisInstitution('Northbridge University (fictional)')
+    setAnalysisDegreeType('PhD')
+    setAnalysisApplicationUrl('https://example.edu/responsible-ai')
+    setAnalysisRequiredDocuments('CV\nTranscript\nResearch proposal')
+    setAnalysisRequirements(
+      "Master's degree\nEnglish proficiency\nResearch experience"
+    )
+    setAnalysisEvidence(
+      "Master's degree in Computer Science completed\nIELTS 7.5 certificate available\nTwo years of research assistant experience"
+    )
+    setAnalysisDeadline('30 June 2027')
+    setAnalysisDeadlineDate('2027-06-30')
+    setAnalysisFunding('Full scholarship and stipend available')
+    setAnalysisResult(null)
+    setAnalysisStatus('Fictional sample loaded. Select Analyse opportunity to review it.')
+  }
+
   if (authLoading) {
-    return <main className="auth-shell"><p className="upload-status">Loading your workspace...</p></main>
+    return <main className="auth-shell"><p className="upload-status">Loading your workspace... The free demo may take up to a minute to wake.</p></main>
   }
 
   if (!authUser) {
@@ -1721,6 +1741,9 @@ async function handlePreviewText(
               <button type="submit" disabled={analysisLoading}>
                 {analysisLoading ? 'Analyzing...' : 'Analyse opportunity'}
               </button>
+              <button type="button" className="ghost" onClick={loadFictionalSample}>
+                Load fictional sample
+              </button>
               <button
                 type="button"
                 className="ghost"
@@ -1755,7 +1778,11 @@ async function handlePreviewText(
                   <p className="eyebrow">RESULT</p>
                   <h3>{analysisResult.title}</h3>
                 </div>
-                <span className={`analysis-pill ${analysisResult.eligibility.toLowerCase()}`}>
+                <span
+                  className={`analysis-pill ${analysisResult.eligibility
+                    .toLowerCase()
+                    .replaceAll(' ', '-')}`}
+                >
                   {analysisResult.eligibility}
                 </span>
               </div>

@@ -1,7 +1,10 @@
+from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 from typing import Literal
 from app.routers.documents import router as documents_router
 from app.routers.opportunities import router as opportunities_router
@@ -141,3 +144,18 @@ def product() -> ProductInfo:
         promise="Every decision is backed by evidence or marked unclear.",
         support_email=str(settings.support_email) if settings.support_email else None,
     )
+
+
+def mount_static_frontend(application: FastAPI, directory: Path | None) -> bool:
+    """Mount a built single-page frontend when deployment provides one."""
+    if directory is None or not (directory / "index.html").is_file():
+        return False
+    application.mount(
+        "/",
+        StaticFiles(directory=directory, html=True),
+        name="web",
+    )
+    return True
+
+
+mount_static_frontend(app, settings.web_static_dir)

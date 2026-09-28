@@ -1,0 +1,999 @@
+{
+  "label": "insufficient-information-state",
+  "created_at": "2026-09-28T11:44:01.117970+00:00",
+  "git_revision": "cd91c71",
+  "dataset_version": "1.0.0",
+  "data_classification": "Fully synthetic academic calls and fictional applicant evidence",
+  "conditions": {
+    "retrieval": "InMemoryRetriever lexical token overlap, top_k=3",
+    "chunking": "Per synthetic page, max_chars=240, no overlap",
+    "eligibility": "ApplyLens deterministic opportunity analysis",
+    "external_ai_calls": false,
+    "timing": "Warm local process; retrieval plus eligibility; not a hosting benchmark",
+    "python": "3.12.8",
+    "platform": "Windows"
+  },
+  "metric_notes": {
+    "decisive_evidence_presence_proxy": "Checks that each decisive requirement result includes evidence; it does not judge semantic entailment.",
+    "structured_output_validity": "Validates the returned object against OpportunityAnalysisResponse.",
+    "latency": "Local deterministic execution only; excludes HTTP, database, cold start, and network time."
+  },
+  "overall": {
+    "case_count": 30,
+    "retrieval_annotation_count": 34,
+    "retrieval_recall_at_1": 0.8824,
+    "retrieval_recall_at_3": 0.9412,
+    "eligibility_outcome_accuracy": 0.8333,
+    "insufficient_information_accuracy": 1.0,
+    "structured_output_validity": 1.0,
+    "decisive_evidence_presence_proxy": 1.0,
+    "latency_ms_median": 0.376,
+    "latency_ms_p95": 1.136
+  },
+  "splits": {
+    "development": {
+      "case_count": 20,
+      "retrieval_annotation_count": 22,
+      "retrieval_recall_at_1": 0.9091,
+      "retrieval_recall_at_3": 0.9545,
+      "eligibility_outcome_accuracy": 0.85,
+      "insufficient_information_accuracy": 1.0,
+      "structured_output_validity": 1.0,
+      "decisive_evidence_presence_proxy": 1.0,
+      "latency_ms_median": 0.431,
+      "latency_ms_p95": 1.136
+    },
+    "held_out": {
+      "case_count": 10,
+      "retrieval_annotation_count": 12,
+      "retrieval_recall_at_1": 0.8333,
+      "retrieval_recall_at_3": 0.9167,
+      "eligibility_outcome_accuracy": 0.8,
+      "insufficient_information_accuracy": 1.0,
+      "structured_output_validity": 1.0,
+      "decisive_evidence_presence_proxy": 1.0,
+      "latency_ms_median": 0.309,
+      "latency_ms_p95": 0.428
+    }
+  },
+  "cases": [
+    {
+      "id": "dev-001",
+      "split": "development",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "bachelor's degree",
+          "page": 2,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "59007b48619d320c",
+            "text": "Applicants must hold a bachelor's degree in a quantitative subject.",
+            "source_name": "dev-001.txt",
+            "page": 2,
+            "index": 0
+          },
+          "score": 0.25
+        },
+        {
+          "chunk": {
+            "chunk_id": "be7dd4718e05e971",
+            "text": "The university library is open every day.",
+            "source_name": "dev-001.txt",
+            "page": 3,
+            "index": 0
+          },
+          "score": 0.25
+        }
+      ],
+      "latency_ms": 1.136
+    },
+    {
+      "id": "dev-002",
+      "split": "development",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "IELTS overall score of 7.0",
+          "page": 2,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "bc917465c8636a57",
+            "text": "An IELTS overall score of 7.0 is required.",
+            "source_name": "dev-002.txt",
+            "page": 2,
+            "index": 0
+          },
+          "score": 0.25
+        }
+      ],
+      "latency_ms": 0.526
+    },
+    {
+      "id": "dev-003",
+      "split": "development",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "prior research experience",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "92506af24dfb0159",
+            "text": "Candidates must demonstrate prior research experience.",
+            "source_name": "dev-003.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 1.0
+        }
+      ],
+      "latency_ms": 0.52
+    },
+    {
+      "id": "dev-004",
+      "split": "development",
+      "expected_eligibility": "Insufficient information",
+      "actual_eligibility": "Insufficient information",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 0,
+      "decisive_requirements_with_evidence": 0,
+      "retrieval_expected_matches": [
+        {
+          "text": "English proficiency",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "fe656f3324812c8e",
+            "text": "English proficiency must be demonstrated before enrolment.",
+            "source_name": "dev-004.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 0.6666666666666666
+        }
+      ],
+      "latency_ms": 0.574
+    },
+    {
+      "id": "dev-005",
+      "split": "development",
+      "expected_eligibility": "Not eligible",
+      "actual_eligibility": "Not eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "bachelor's degree is mandatory",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "00765696036ca70e",
+            "text": "A bachelor's degree is mandatory for entry.",
+            "source_name": "dev-005.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 1.0
+        }
+      ],
+      "latency_ms": 0.478
+    },
+    {
+      "id": "dev-006",
+      "split": "development",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 2,
+      "decisive_requirements_with_evidence": 2,
+      "retrieval_expected_matches": [
+        {
+          "text": "master's degree",
+          "page": 1,
+          "first_matching_rank": 1
+        },
+        {
+          "text": "Research experience",
+          "page": 2,
+          "first_matching_rank": 2
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "0e5795395aa8033c",
+            "text": "Applicants require a master's degree.",
+            "source_name": "dev-006.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 0.25
+        },
+        {
+          "chunk": {
+            "chunk_id": "c5e425c0f9b0e1cc",
+            "text": "Research experience in a computational discipline is required.",
+            "source_name": "dev-006.txt",
+            "page": 2,
+            "index": 0
+          },
+          "score": 0.25
+        }
+      ],
+      "latency_ms": 0.548
+    },
+    {
+      "id": "dev-007",
+      "split": "development",
+      "expected_eligibility": "Insufficient information",
+      "actual_eligibility": "Insufficient information",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "master's degree",
+          "page": 1,
+          "first_matching_rank": 1
+        },
+        {
+          "text": "research experience",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "14d9ee9162635171",
+            "text": "A master's degree and prior research experience are required.",
+            "source_name": "dev-007.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 0.6666666666666666
+        }
+      ],
+      "latency_ms": 0.515
+    },
+    {
+      "id": "dev-008",
+      "split": "development",
+      "expected_eligibility": "Not eligible",
+      "actual_eligibility": "Not eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "undergraduate degree",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "078b5b1fdfc3fafe",
+            "text": "Applicants must possess an undergraduate degree.",
+            "source_name": "dev-008.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 0.6666666666666666
+        }
+      ],
+      "latency_ms": 1.78
+    },
+    {
+      "id": "dev-009",
+      "split": "development",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Insufficient information",
+      "outcome_correct": false,
+      "structured_output_valid": true,
+      "decisive_requirements": 0,
+      "decisive_requirements_with_evidence": 0,
+      "retrieval_expected_matches": [
+        {
+          "text": "minimum cumulative GPA is 3.2",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "f926c6784157d8ca",
+            "text": "The minimum cumulative GPA is 3.2 on a 4.0 scale.",
+            "source_name": "dev-009.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 1.0
+        }
+      ],
+      "latency_ms": 0.373
+    },
+    {
+      "id": "dev-010",
+      "split": "development",
+      "expected_eligibility": "Insufficient information",
+      "actual_eligibility": "Insufficient information",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 0,
+      "decisive_requirements_with_evidence": 0,
+      "retrieval_expected_matches": [
+        {
+          "text": "citizens of a listed partner country",
+          "page": 1,
+          "first_matching_rank": null
+        }
+      ],
+      "retrieved": [],
+      "latency_ms": 0.352
+    },
+    {
+      "id": "dev-011",
+      "split": "development",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "research ability is required",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "5f1b1212f30eab62",
+            "text": "Evidence of research ability is required.",
+            "source_name": "dev-011.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 1.0
+        }
+      ],
+      "latency_ms": 0.344
+    },
+    {
+      "id": "dev-012",
+      "split": "development",
+      "expected_eligibility": "Not eligible",
+      "actual_eligibility": "Not eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "English proficiency is required",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "dbc1cfc95da274be",
+            "text": "English proficiency is required for all applicants.",
+            "source_name": "dev-012.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 0.5
+        }
+      ],
+      "latency_ms": 0.429
+    },
+    {
+      "id": "dev-013",
+      "split": "development",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "TOEFL score",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "8e8d7bd2b6cf92f5",
+            "text": "A TOEFL score meeting the published threshold is accepted.",
+            "source_name": "dev-013.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 0.3333333333333333
+        }
+      ],
+      "latency_ms": 0.358
+    },
+    {
+      "id": "dev-014",
+      "split": "development",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "master's degree in chemistry",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "ada832ded4baabba",
+            "text": "Entry requires a master's degree in chemistry or a related subject.",
+            "source_name": "dev-014.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 0.5
+        }
+      ],
+      "latency_ms": 0.308
+    },
+    {
+      "id": "dev-015",
+      "split": "development",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Insufficient information",
+      "outcome_correct": false,
+      "structured_output_valid": true,
+      "decisive_requirements": 0,
+      "decisive_requirements_with_evidence": 0,
+      "retrieval_expected_matches": [
+        {
+          "text": "two years of relevant work experience",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "a812be4734a09084",
+            "text": "At least two years of relevant work experience is required.",
+            "source_name": "dev-015.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 0.3333333333333333
+        }
+      ],
+      "latency_ms": 0.407
+    },
+    {
+      "id": "dev-016",
+      "split": "development",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Insufficient information",
+      "outcome_correct": false,
+      "structured_output_valid": true,
+      "decisive_requirements": 0,
+      "decisive_requirements_with_evidence": 0,
+      "retrieval_expected_matches": [
+        {
+          "text": "Python programming skills",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "948f3abff2c9dc23",
+            "text": "Applicants must demonstrate Python programming skills.",
+            "source_name": "dev-016.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 0.3333333333333333
+        }
+      ],
+      "latency_ms": 0.808
+    },
+    {
+      "id": "dev-017",
+      "split": "development",
+      "expected_eligibility": "Insufficient information",
+      "actual_eligibility": "Insufficient information",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 0,
+      "decisive_requirements_with_evidence": 0,
+      "retrieval_expected_matches": [
+        {
+          "text": "research proposal is required",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "59b215c4c9e50516",
+            "text": "A research proposal is required with the application.",
+            "source_name": "dev-017.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 0.6666666666666666
+        },
+        {
+          "chunk": {
+            "chunk_id": "5dfb77918be77b82",
+            "text": "There is no application fee.",
+            "source_name": "dev-017.txt",
+            "page": 2,
+            "index": 0
+          },
+          "score": 0.3333333333333333
+        }
+      ],
+      "latency_ms": 0.391
+    },
+    {
+      "id": "dev-018",
+      "split": "development",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "Applicants must hold a bachelor's degree",
+          "page": 2,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "95a95df05508ccff",
+            "text": "Applicants must hold a bachelor's degree.",
+            "source_name": "dev-018.txt",
+            "page": 2,
+            "index": 0
+          },
+          "score": 0.6666666666666666
+        }
+      ],
+      "latency_ms": 0.332
+    },
+    {
+      "id": "dev-019",
+      "split": "development",
+      "expected_eligibility": "Insufficient information",
+      "actual_eligibility": "Insufficient information",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 0,
+      "decisive_requirements_with_evidence": 0,
+      "retrieval_expected_matches": [
+        {
+          "text": "normally expected to have relevant research exposure",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "5d12f48c6073c4b3",
+            "text": "Applicants are normally expected to have relevant research exposure.",
+            "source_name": "dev-019.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 0.3333333333333333
+        }
+      ],
+      "latency_ms": 0.296
+    },
+    {
+      "id": "dev-020",
+      "split": "development",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "relevant degree",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "9010bf6089a9bf6a",
+            "text": "Applicants must hold a relevant degree.",
+            "source_name": "dev-020.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 0.6666666666666666
+        }
+      ],
+      "latency_ms": 0.434
+    },
+    {
+      "id": "held-001",
+      "split": "held_out",
+      "expected_eligibility": "Not eligible",
+      "actual_eligibility": "Not eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "bachelor's qualification",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "c94b30146af99a51",
+            "text": "A bachelor's qualification is required.",
+            "source_name": "held-001.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 1.0
+        }
+      ],
+      "latency_ms": 0.297
+    },
+    {
+      "id": "held-002",
+      "split": "held_out",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "Previous research activity",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "b8c712d119b9f03f",
+            "text": "Previous research activity must be demonstrated.",
+            "source_name": "held-002.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 1.0
+        }
+      ],
+      "latency_ms": 0.32
+    },
+    {
+      "id": "held-003",
+      "split": "held_out",
+      "expected_eligibility": "Not eligible",
+      "actual_eligibility": "Not eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 2,
+      "decisive_requirements_with_evidence": 2,
+      "retrieval_expected_matches": [
+        {
+          "text": "master's degree",
+          "page": 1,
+          "first_matching_rank": 1
+        },
+        {
+          "text": "English proficiency",
+          "page": 2,
+          "first_matching_rank": 2
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "67ed550b7d36a8d1",
+            "text": "A master's degree is required.",
+            "source_name": "held-003.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 0.2
+        },
+        {
+          "chunk": {
+            "chunk_id": "e3c4dddf5d46f779",
+            "text": "English proficiency is also mandatory.",
+            "source_name": "held-003.txt",
+            "page": 2,
+            "index": 0
+          },
+          "score": 0.2
+        }
+      ],
+      "latency_ms": 0.319
+    },
+    {
+      "id": "held-004",
+      "split": "held_out",
+      "expected_eligibility": "Insufficient information",
+      "actual_eligibility": "Insufficient information",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "relevant degree",
+          "page": 1,
+          "first_matching_rank": 1
+        },
+        {
+          "text": "research experience",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "ce8f27f1898b5b99",
+            "text": "Applicants need a relevant degree and research experience.",
+            "source_name": "held-004.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 0.6666666666666666
+        }
+      ],
+      "latency_ms": 0.428
+    },
+    {
+      "id": "held-005",
+      "split": "held_out",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Insufficient information",
+      "outcome_correct": false,
+      "structured_output_valid": true,
+      "decisive_requirements": 0,
+      "decisive_requirements_with_evidence": 0,
+      "retrieval_expected_matches": [
+        {
+          "text": "undergraduate qualification",
+          "page": 1,
+          "first_matching_rank": null
+        }
+      ],
+      "retrieved": [],
+      "latency_ms": 0.283
+    },
+    {
+      "id": "held-006",
+      "split": "held_out",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Insufficient information",
+      "outcome_correct": false,
+      "structured_output_valid": true,
+      "decisive_requirements": 0,
+      "decisive_requirements_with_evidence": 0,
+      "retrieval_expected_matches": [
+        {
+          "text": "CEFR C1 language certificate",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "f2ed5604ccbfc508",
+            "text": "Applicants may provide a CEFR C1 language certificate.",
+            "source_name": "held-006.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 0.3333333333333333
+        }
+      ],
+      "latency_ms": 0.296
+    },
+    {
+      "id": "held-007",
+      "split": "held_out",
+      "expected_eligibility": "Not eligible",
+      "actual_eligibility": "Not eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "research experience is essential",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "64085d71aa4a5ed7",
+            "text": "Demonstrated research experience is essential.",
+            "source_name": "held-007.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 0.6666666666666666
+        }
+      ],
+      "latency_ms": 0.332
+    },
+    {
+      "id": "held-008",
+      "split": "held_out",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 0,
+      "decisive_requirements_with_evidence": 0,
+      "retrieval_expected_matches": [
+        {
+          "text": "no formal eligibility requirements",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "2006373bc5450e87",
+            "text": "There are no formal eligibility requirements.",
+            "source_name": "held-008.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 1.0
+        }
+      ],
+      "latency_ms": 0.378
+    },
+    {
+      "id": "held-009",
+      "split": "held_out",
+      "expected_eligibility": "Eligible",
+      "actual_eligibility": "Eligible",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 1,
+      "decisive_requirements_with_evidence": 1,
+      "retrieval_expected_matches": [
+        {
+          "text": "degree requirement is waived",
+          "page": 1,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "59df1ada217bae7e",
+            "text": "The prior computing degree requirement is waived for conversion applicants.",
+            "source_name": "held-009.txt",
+            "page": 1,
+            "index": 0
+          },
+          "score": 1.0
+        }
+      ],
+      "latency_ms": 0.292
+    },
+    {
+      "id": "held-010",
+      "split": "held_out",
+      "expected_eligibility": "Insufficient information",
+      "actual_eligibility": "Insufficient information",
+      "outcome_correct": true,
+      "structured_output_valid": true,
+      "decisive_requirements": 0,
+      "decisive_requirements_with_evidence": 0,
+      "retrieval_expected_matches": [
+        {
+          "text": "Applicants must demonstrate research experience",
+          "page": 2,
+          "first_matching_rank": 1
+        }
+      ],
+      "retrieved": [
+        {
+          "chunk": {
+            "chunk_id": "eeb163515906d10b",
+            "text": "Applicants must demonstrate research experience.",
+            "source_name": "held-010.txt",
+            "page": 2,
+            "index": 0
+          },
+          "score": 0.6666666666666666
+        }
+      ],
+      "latency_ms": 0.3
+    }
+  ]
+}

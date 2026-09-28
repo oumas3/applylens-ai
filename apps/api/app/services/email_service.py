@@ -15,6 +15,8 @@ class PasswordResetEmailSender:
         self.settings = settings
 
     def send(self, recipient: str, reset_url: str) -> None:
+        if self.settings.email_delivery == "disabled":
+            raise RuntimeError("Password recovery email is disabled.")
         if self.settings.email_delivery == "console":
             logger.warning(
                 "Development-only password reset link: %s",

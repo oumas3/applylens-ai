@@ -18,6 +18,8 @@ class Settings(BaseSettings):
     database_url: str | None = None
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     auth_database_path: Path = ROOT_DIR / "apps" / "api" / "storage" / "auth.db"
+    web_static_dir: Path | None = None
+    document_storage: Literal["local", "database"] = "local"
     document_max_pages: int = Field(default=100, ge=1, le=1000)
     document_max_extracted_chars: int = Field(
         default=500_000,
@@ -32,7 +34,7 @@ class Settings(BaseSettings):
     openai_api_key: SecretStr | None = None
     openai_embedding_model: str = "text-embedding-3-small"
     openai_base_url: str = "https://api.openai.com/v1"
-    email_delivery: Literal["console", "smtp"] = "console"
+    email_delivery: Literal["console", "smtp", "disabled"] = "console"
     smtp_host: str | None = None
     smtp_port: int = Field(default=587, gt=0, le=65535)
     smtp_username: str | None = None
@@ -86,6 +88,10 @@ class Settings(BaseSettings):
             raise ValueError("DATABASE_URL is required when retrieval_storage is pgvector")
         if self.retrieval_storage == "pgvector" and self.retrieval_provider != "openai":
             raise ValueError("retrieval_provider must be openai when retrieval_storage is pgvector")
+        if self.document_storage == "database" and not self.database_url:
+            raise ValueError(
+                "DATABASE_URL is required when DOCUMENT_STORAGE is database"
+            )
         if self.email_delivery == "smtp":
             if not self.smtp_host or not self.smtp_host.strip():
                 raise ValueError("SMTP_HOST is required when EMAIL_DELIVERY is smtp")
@@ -120,9 +126,11 @@ class Settings(BaseSettings):
                 raise ValueError(
                     "WEB_ORIGIN must not contain credentials, path, query, or fragment"
                 )
-            if self.email_delivery != "smtp":
-                raise ValueError("EMAIL_DELIVERY must be smtp when APP_ENV is production")
-            if not self.smtp_starttls:
+            if self.email_delivery == "console":
+                raise ValueError(
+                    "EMAIL_DELIVERY must be smtp or disabled when APP_ENV is production"
+                )
+            if self.email_delivery == "smtp" and not self.smtp_starttls:
                 raise ValueError("SMTP_STARTTLS must be true when APP_ENV is production")
             if self.support_email is None:
                 raise ValueError("SUPPORT_EMAIL is required when APP_ENV is production")

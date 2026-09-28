@@ -50,8 +50,9 @@ class DocumentService:
                         "Encrypted PDFs are not supported."
                     )
                 if len(reader.pages) > max_pages:
+                    page_label = "page" if max_pages == 1 else "pages"
                     raise DocumentExtractionError(
-                        f"PDFs must not exceed {max_pages} pages."
+                        f"PDFs must not exceed {max_pages} {page_label}."
                     )
 
                 pages_text: list[str] = []

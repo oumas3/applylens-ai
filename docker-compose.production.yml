@@ -18,6 +18,7 @@ services:
       - ./apps/api/migrations/006_candidate_profiles.sql:/docker-entrypoint-initdb.d/006_candidate_profiles.sql:ro
       - ./apps/api/migrations/007_request_limits.sql:/docker-entrypoint-initdb.d/007_request_limits.sql:ro
       - ./apps/api/migrations/008_security_cleanup_indexes.sql:/docker-entrypoint-initdb.d/008_security_cleanup_indexes.sql:ro
+      - ./apps/api/migrations/009_document_extracted_text.sql:/docker-entrypoint-initdb.d/009_document_extracted_text.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
       interval: 10s
@@ -42,6 +43,9 @@ services:
       REGISTRATION_RATE_LIMIT: ${REGISTRATION_RATE_LIMIT:-5}
       PASSWORD_RESET_RATE_LIMIT: ${PASSWORD_RESET_RATE_LIMIT:-5}
       DOCUMENT_UPLOAD_RATE_LIMIT: ${DOCUMENT_UPLOAD_RATE_LIMIT:-10}
+      DOCUMENT_STORAGE: ${DOCUMENT_STORAGE:-local}
+      DOCUMENT_MAX_PAGES: ${DOCUMENT_MAX_PAGES:-100}
+      DOCUMENT_MAX_EXTRACTED_CHARS: ${DOCUMENT_MAX_EXTRACTED_CHARS:-500000}
       OPPORTUNITY_INGEST_RATE_LIMIT: ${OPPORTUNITY_INGEST_RATE_LIMIT:-20}
       OPPORTUNITY_ANALYSIS_RATE_LIMIT: ${OPPORTUNITY_ANALYSIS_RATE_LIMIT:-30}
       FREE_BETA_DOCUMENT_LIMIT: ${FREE_BETA_DOCUMENT_LIMIT:-25}

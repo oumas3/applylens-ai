@@ -69,6 +69,7 @@ class DocumentMetadata(BaseModel):
     size_bytes: int
     status: Literal["uploaded"]
     extracted_text_length: int = 0
+    extracted_text: str | None = Field(default=None, exclude=True, repr=False)
     uploaded_at: datetime
 
 
@@ -88,7 +89,9 @@ def _load_documents() -> dict[str, DocumentMetadata]:
             return {document.id: document for document in loaded}
         except Exception:
             logger.exception("Unable to load document metadata from PostgreSQL")
-            return {}
+            raise RuntimeError(
+                "PostgreSQL document metadata could not be loaded."
+            )
 
     if not DOCUMENTS_FILE.exists():
         return {}
@@ -103,13 +106,17 @@ def _load_documents() -> dict[str, DocumentMetadata]:
 
 
 def _persist_documents(user_id: str | None = None) -> None:
+    records = [
+        {
+            **document.model_dump(mode="python"),
+            "extracted_text": document.extracted_text,
+        }
+        for document in documents.values()
+        if user_id is None or document.user_id == user_id
+    ]
     if application_store is not None:
         application_store.replace_documents(
-            (
-                document.model_dump(mode="python")
-                for document in documents.values()
-                if user_id is None or document.user_id == user_id
-            ),
+            records,
             user_id=user_id,
         )
         return
@@ -118,8 +125,9 @@ def _persist_documents(user_id: str | None = None) -> None:
     temporary_file = DOCUMENTS_FILE.with_suffix(".json.tmp")
     temporary_file.write_text(
         json.dumps(
-            [document.model_dump(mode="json") for document in documents.values()],
+            records,
             indent=2,
+            default=str,
         ),
         encoding="utf-8",
     )
@@ -127,6 +135,18 @@ def _persist_documents(user_id: str | None = None) -> None:
 
 
 documents: dict[str, DocumentMetadata] = _load_documents()
+
+
+def read_document_text(document: DocumentMetadata) -> str:
+    """Return stored extracted text without exposing its persistence mode."""
+    if document.extracted_text is not None:
+        return document.extracted_text
+    return DocumentService.extract_text(
+        document.content_type,
+        file_storage.read(document.stored_filename),
+        max_pages=settings.document_max_pages,
+        max_chars=settings.document_max_extracted_chars,
+    )
 
 
 async def read_upload_bytes(file: UploadFile, *, max_size: int = MAX_FILE_SIZE) -> bytes:
@@ -228,22 +248,6 @@ async def upload_document(
                 detail="The uploaded file is not a valid PDF.",
             )
 
-    document_id = str(uuid4())
-    file_extension = Path(filename).suffix.lower()
-    stored_filename = f"{document_id}{file_extension}"
-    destination = UPLOAD_DIRECTORY / stored_filename
-    size_bytes = 0
-
-    try:
-        stored_file = file_storage.save(stored_filename, file_bytes)
-        size_bytes = stored_file.size_bytes
-    except Exception:
-        destination.unlink(missing_ok=True)
-        raise
-
-    finally:
-        await file.close()
-
     try:
         extracted_text = DocumentService.extract_text(
             normalized_content_type,
@@ -252,12 +256,23 @@ async def upload_document(
             max_chars=settings.document_max_extracted_chars,
         )
     except DocumentExtractionError as error:
-        destination.unlink(missing_ok=True)
-
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(error),
         ) from error
+    finally:
+        await file.close()
+
+    document_id = str(uuid4())
+    file_extension = Path(filename).suffix.lower()
+    stored_filename = f"{document_id}{file_extension}"
+    size_bytes = len(file_bytes)
+    extracted_text_record: str | None = extracted_text
+
+    if settings.document_storage == "local":
+        stored_file = file_storage.save(stored_filename, file_bytes)
+        size_bytes = stored_file.size_bytes
+        extracted_text_record = None
 
     metadata = DocumentMetadata(
         id=document_id,
@@ -269,6 +284,7 @@ async def upload_document(
         size_bytes=size_bytes,
         status="uploaded",
         extracted_text_length=len(extracted_text),
+        extracted_text=extracted_text_record,
         uploaded_at=datetime.now(timezone.utc),
     )
 
@@ -279,10 +295,17 @@ async def upload_document(
         try:
             enforce_account_quota("document", owned_document_count + 1)
         except HTTPException:
-            file_storage.delete(stored_filename)
+            if settings.document_storage == "local":
+                file_storage.delete(stored_filename)
             raise
         documents[document_id] = metadata
-        _persist_documents(str(user["id"]))
+        try:
+            _persist_documents(str(user["id"]))
+        except Exception:
+            documents.pop(document_id, None)
+            if settings.document_storage == "local":
+                file_storage.delete(stored_filename)
+            raise
 
     return metadata
 
@@ -324,13 +347,7 @@ def get_document_text(document_id: str, user: dict[str, str | bool] = Depends(ge
             detail="Document not found.",
         )
 
-    extracted_text = DocumentService.extract_text(
-        document.content_type,
-        file_storage.read(document.stored_filename),
-        max_pages=settings.document_max_pages,
-        max_chars=settings.document_max_extracted_chars,
-    )
-    return extracted_text
+    return read_document_text(document)
 
 
 @router.delete(
@@ -347,7 +364,8 @@ def delete_document(document_id: str, user: dict[str, str | bool] = Depends(get_
         )
 
     documents.pop(document_id)
-    file_storage.delete(document.stored_filename)
+    if document.extracted_text is None:
+        file_storage.delete(document.stored_filename)
     _persist_documents(str(user["id"]))
     from app.routers.profiles import remove_document_reference
 

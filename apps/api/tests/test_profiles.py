@@ -320,7 +320,7 @@ def test_analysis_uses_only_profile_items_with_live_document_evidence(profile_cl
 
     assert supported.status_code == 200
     assert supported.json()["eligibility"] == "Eligible"
-    assert unsupported.json()["eligibility"] == "Action required"
+    assert unsupported.json()["eligibility"] == "Insufficient information"
     assert unsupported.json()["evidence_summary"] == []
 
 

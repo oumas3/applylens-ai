@@ -275,6 +275,33 @@ def make_test_pdf(text: str = "Hello from PDF") -> bytes:
     return output.getvalue()
 
 
+def test_upload_document_rejects_invalid_utf8_text() -> None:
+    response = client.post(
+        "/api/v1/documents",
+        files={"file": ("notes.txt", b"\xff\xfe", "text/plain")},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["detail"] == "The text file must use UTF-8 encoding."
+    assert client.get("/api/v1/documents").json() == []
+
+
+def test_upload_document_rejects_pdf_without_extractable_text() -> None:
+    output = BytesIO()
+    writer = PdfWriter()
+    writer.add_blank_page(width=612, height=792)
+    writer.write(output)
+
+    response = client.post(
+        "/api/v1/documents",
+        files={"file": ("scan.pdf", output.getvalue(), "application/pdf")},
+    )
+
+    assert response.status_code == 400
+    assert "OCR" in response.json()["detail"]
+    assert client.get("/api/v1/documents").json() == []
+
+
 def test_health() -> None:
     response = client.get("/health")
 
@@ -595,6 +622,48 @@ def test_get_document_text_returns_extracted_content() -> None:
     assert response.text == "hello from text endpoint"
 
 
+def test_database_document_storage_discards_source_bytes_and_retains_text(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    persisted: list[dict] = []
+
+    class RecordingStore:
+        @staticmethod
+        def replace_documents(records, *, user_id=None) -> None:
+            persisted[:] = list(records)
+
+    class NoFileStorage:
+        @staticmethod
+        def save(*_args, **_kwargs):
+            raise AssertionError("database storage must not save source bytes")
+
+        @staticmethod
+        def read(*_args, **_kwargs):
+            raise AssertionError("database storage must read extracted text")
+
+        @staticmethod
+        def delete(*_args, **_kwargs):
+            raise AssertionError("database storage has no source file to delete")
+
+    monkeypatch.setattr(documents_router.settings, "document_storage", "database")
+    monkeypatch.setattr(documents_router, "application_store", RecordingStore())
+    monkeypatch.setattr(documents_router, "file_storage", NoFileStorage())
+
+    uploaded = client.post(
+        "/api/v1/documents",
+        files={"file": ("private.txt", b"bounded extracted evidence", "text/plain")},
+    )
+
+    assert uploaded.status_code == 201
+    assert "extracted_text" not in uploaded.json()
+    assert persisted[0]["extracted_text"] == "bounded extracted evidence"
+    document_id = uploaded.json()["id"]
+    assert client.get(f"/api/v1/documents/{document_id}/text").text == (
+        "bounded extracted evidence"
+    )
+    assert client.delete(f"/api/v1/documents/{document_id}").status_code == 204
+
+
 def test_delete_document_removes_metadata_and_file() -> None:
     upload_response = client.post(
         "/api/v1/documents",
@@ -630,7 +699,7 @@ def test_analyse_opportunity_returns_structured_review() -> None:
     assert response.status_code == 200
     payload = response.json()
     assert payload["title"] == "PhD in AI"
-    assert payload["eligibility"] == "Action required"
+    assert payload["eligibility"] == "Insufficient information"
     assert payload["matched_requirements"] == ["Bachelor's degree", "Research experience"]
     assert payload["missing_requirements"] == ["English proficiency"]
     assert payload["evidence_summary"] == [
@@ -654,9 +723,12 @@ def test_analyse_opportunity_returns_structured_review() -> None:
         },
         {
             "requirement": "English proficiency",
-            "status": "Action required",
+            "status": "Insufficient information",
             "evidence": [],
-            "explanation": "No supporting evidence was found in the provided profile.",
+            "explanation": (
+                "The provided profile does not contain enough evidence "
+                "to assess this requirement."
+            ),
             "action": "Provide evidence for: English proficiency",
         },
     ]
@@ -881,7 +953,7 @@ def test_end_to_end_application_review_workflow() -> None:
     )
     assert analysis_response.status_code == 200
     analysis = analysis_response.json()
-    assert analysis["eligibility"] == "Action required"
+    assert analysis["eligibility"] == "Insufficient information"
     assert analysis["deadline_date"] == "2026-09-15"
     assert analysis["funding_status"] == "available"
 

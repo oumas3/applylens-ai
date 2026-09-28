@@ -18,7 +18,7 @@ from app.concurrency import guarded
 from app.rate_limiting import enforce_rate_limit
 from app.quotas import enforce_account_quota
 from app.routers.auth import get_current_user
-from app.routers.documents import documents, file_storage, read_upload_bytes
+from app.routers.documents import documents, read_document_text, read_upload_bytes
 from app.routers.profiles import profile_evidence, profiles, referenced_document_ids
 from app.services.document_service import DocumentExtractionError, DocumentService
 from app.services.application_store import PostgresApplicationStore
@@ -109,7 +109,9 @@ def _load_opportunities() -> list[OpportunityRecord]:
             ]
         except Exception:
             logger.exception("Unable to load opportunities from PostgreSQL")
-            return []
+            raise RuntimeError(
+                "PostgreSQL opportunities could not be loaded."
+            )
 
     if not OPPORTUNITIES_FILE.exists():
         return []
@@ -267,9 +269,16 @@ class OpportunityAnalysisRequest(BaseModel):
     funding: str | None = None
 
 
+EligibilityStatus = Literal[
+    "Eligible",
+    "Not eligible",
+    "Insufficient information",
+]
+
+
 class RequirementAnalysis(BaseModel):
     requirement: str
-    status: Literal["Eligible", "Not eligible", "Action required"]
+    status: EligibilityStatus
     evidence: list[str]
     explanation: str
     action: str | None = None
@@ -279,7 +288,7 @@ class OpportunityAnalysisResponse(BaseModel):
     title: str
     institution: str | None = None
     degree_type: str | None = None
-    eligibility: str
+    eligibility: EligibilityStatus
     matched_requirements: list[str]
     missing_requirements: list[str]
     evidence_summary: list[str]
@@ -382,10 +391,7 @@ def _document_evidence(
             )
 
         try:
-            text = DocumentService.extract_text(
-                document.content_type,
-                file_storage.read(document.stored_filename),
-            )
+            text = read_document_text(document)
         except (OSError, DocumentExtractionError) as error:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
@@ -724,10 +730,7 @@ def analyse_opportunity(
             if document is None or document.user_id != user_id:
                 continue
             try:
-                text = DocumentService.extract_text(
-                    document.content_type,
-                    file_storage.read(document.stored_filename),
-                )
+                text = read_document_text(document)
             except (OSError, DocumentExtractionError):
                 continue
             profile_documents[document_id] = (document.original_filename, text)
@@ -768,9 +771,12 @@ def analyse_opportunity(
             requirement_results.append(
                 RequirementAnalysis(
                     requirement=requirement,
-                    status="Action required",
+                    status="Insufficient information",
                     evidence=[],
-                    explanation="No supporting evidence was found in the provided profile.",
+                    explanation=(
+                        "The provided profile does not contain enough evidence "
+                        "to assess this requirement."
+                    ),
                     action=f"Provide evidence for: {requirement}",
                 )
             )
@@ -778,7 +784,7 @@ def analyse_opportunity(
     if failed_requirements:
         eligibility = "Not eligible"
     elif missing_requirements:
-        eligibility = "Action required"
+        eligibility = "Insufficient information"
     else:
         eligibility = "Eligible"
 

@@ -94,6 +94,25 @@ def test_public_abuse_sensitive_actions_return_safe_rate_limit_response(
     assert response.json() == {"detail": "Too many requests. Try again later."}
 
 
+def test_disabled_password_recovery_is_explicit(
+    auth_client: TestClient,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("EMAIL_DELIVERY", "disabled")
+    get_settings.cache_clear()
+
+    response = auth_client.post(
+        "/api/v1/auth/password-reset/request",
+        json={"email": "candidate@example.com"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "Password recovery is unavailable in this restricted demo. "
+        "Contact support for help."
+    )
+
+
 def test_login_keeps_compatibility_with_existing_eight_character_passwords(
     auth_client: TestClient,
 ) -> None:

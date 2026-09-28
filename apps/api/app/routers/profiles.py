@@ -141,7 +141,9 @@ def _load_profiles() -> dict[str, CandidateProfile]:
             return {profile.user_id: profile for profile in loaded}
         except Exception:
             logger.exception("Unable to load candidate profiles from PostgreSQL")
-            return {}
+            raise RuntimeError(
+                "PostgreSQL candidate profiles could not be loaded."
+            )
 
     if not PROFILES_FILE.exists():
         return {}

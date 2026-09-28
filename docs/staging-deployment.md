@@ -78,20 +78,13 @@ running container is replaced.
 
 ```powershell
 docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml up -d --wait postgres
-docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U applylens -d applylens -f /docker-entrypoint-initdb.d/001_pgvector.sql
-docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U applylens -d applylens -f /docker-entrypoint-initdb.d/002_application_data.sql
-docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U applylens -d applylens -f /docker-entrypoint-initdb.d/003_login_attempts.sql
-docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U applylens -d applylens -f /docker-entrypoint-initdb.d/004_password_reset_tokens.sql
-docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U applylens -d applylens -f /docker-entrypoint-initdb.d/005_account_privacy.sql
-docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U applylens -d applylens -f /docker-entrypoint-initdb.d/006_candidate_profiles.sql
-docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U applylens -d applylens -f /docker-entrypoint-initdb.d/007_request_limits.sql
-docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml exec -T postgres psql -v ON_ERROR_STOP=1 -U applylens -d applylens -f /docker-entrypoint-initdb.d/008_security_cleanup_indexes.sql
+docker compose --env-file /etc/applylens/staging.env -f docker-compose.production.yml -f docker-compose.staging.yml run --rm api python -m app.migrations
 ```
 
-Replace `applylens` in the `-U` and `-d` arguments when `POSTGRES_USER` or
-`POSTGRES_DB` is customized. `ON_ERROR_STOP=1` prevents a partial migration
-sequence from being mistaken for success. The current migrations are designed
-to be safely re-applied.
+The runner records applied versions and checksums in `schema_migrations`, uses
+an advisory lock, and stops on the first failure. The API container repeats
+this idempotent check before Uvicorn starts. Do not edit an applied migration;
+add the next numbered SQL file.
 
 ## 5. Start the application and HTTPS proxy
 
