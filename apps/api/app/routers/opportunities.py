@@ -498,11 +498,13 @@ async def ingest_opportunity_file(
         source_text = DocumentService.extract_text(
             normalized_content_type,
             file_bytes,
+            max_pages=runtime_settings.document_max_pages,
+            max_chars=runtime_settings.document_max_extracted_chars,
         )
-    except (DocumentExtractionError, UnicodeDecodeError) as error:
+    except DocumentExtractionError as error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="The opportunity file could not be read.",
+            detail=str(error),
         ) from error
 
     opportunity = ingest_opportunity(

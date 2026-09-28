@@ -18,6 +18,12 @@ class Settings(BaseSettings):
     database_url: str | None = None
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     auth_database_path: Path = ROOT_DIR / "apps" / "api" / "storage" / "auth.db"
+    document_max_pages: int = Field(default=100, ge=1, le=1000)
+    document_max_extracted_chars: int = Field(
+        default=500_000,
+        ge=1_000,
+        le=10_000_000,
+    )
     retrieval_chunk_max_chars: int = Field(default=1200, gt=0, le=10000)
     retrieval_chunk_overlap_chars: int = Field(default=100, ge=0, le=9999)
     retrieval_embedding_dimension: int = Field(default=32, gt=0, le=2048)

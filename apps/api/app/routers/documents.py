@@ -248,6 +248,8 @@ async def upload_document(
         extracted_text = DocumentService.extract_text(
             normalized_content_type,
             file_bytes,
+            max_pages=settings.document_max_pages,
+            max_chars=settings.document_max_extracted_chars,
         )
     except DocumentExtractionError as error:
         destination.unlink(missing_ok=True)
@@ -325,6 +327,8 @@ def get_document_text(document_id: str, user: dict[str, str | bool] = Depends(ge
     extracted_text = DocumentService.extract_text(
         document.content_type,
         file_storage.read(document.stored_filename),
+        max_pages=settings.document_max_pages,
+        max_chars=settings.document_max_extracted_chars,
     )
     return extracted_text
 
