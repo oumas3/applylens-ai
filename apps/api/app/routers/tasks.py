@@ -61,7 +61,7 @@ def _load_tasks() -> list[TaskItem]:
             return [TaskItem.model_validate(item) for item in application_store.load_tasks()]
         except Exception:
             logger.exception("Unable to load tasks from PostgreSQL")
-            return []
+            raise RuntimeError("PostgreSQL tasks could not be loaded.")
 
     if not TASKS_FILE.exists():
         return DEFAULT_TASKS.copy()

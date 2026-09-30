@@ -97,6 +97,11 @@
   background: #f3ad35;
 }
 
+.analysis-pill.insufficient-information {
+  background: #f3ad35;
+  color: #251d0b;
+}
+
 .analysis-grid {
   display: grid;
   gap: 12px;

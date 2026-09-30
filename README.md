@@ -4,11 +4,43 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 
 ## Current verification
 
-- Backend test suite: 156 passing tests
-- Deployment smoke-check suite: 6 passing tests
-- Frontend test suite: 12 passing tests
+- Backend test suite: 224 passing, 2 PostgreSQL integration tests skipped locally
+- Deployment smoke-check suite: 7 passing tests
+- Frontend test suite: 18 passing tests
 - Frontend production build: passing
+- Deterministic evaluation: 30 synthetic cases, including 10 held out
 
+The repository is deployment-ready, but it does not yet claim a verified public
+URL. Provider deployment and restart/persistence acceptance remain explicit
+release gates in [`docs/deployment.md`](docs/deployment.md).
+
+## Restricted demo architecture
+
+```mermaid
+flowchart LR
+    Browser[React browser client] -->|same-origin HTTPS| API[FastAPI on Render Free]
+    API -->|pooled TLS connection| DB[(Neon Free PostgreSQL)]
+    API --> Rules[Local lexical retrieval and deterministic eligibility rules]
+```
+
+The free demo deliberately has no paid model dependency. It stores bounded
+extracted text in PostgreSQL and discards uploaded source bytes, which avoids
+depending on Render's ephemeral filesystem. `Dockerfile.demo` serves the built
+React app and API from one container; `render.yaml` keeps deployment gated on
+passing checks.
+
+### Reviewer walkthrough
+
+1. Register a fictional account and select **Load fictional sample** in the
+   opportunity analysis form.
+2. Run the analysis and inspect matched evidence, missing information, funding,
+   deadline, and generated application tasks.
+3. Save or compare reviews, update task progress, and try account export.
+
+The sample uses a fictional institution and no private applicant data.
+
+For an evidence-backed project summary, interview talking points, and CV-ready
+bullets, see [`docs/portfolio-handoff.md`](docs/portfolio-handoff.md).
 
 ## Project status
 
@@ -161,6 +193,20 @@ The default retrieval implementation remains local and deterministic, so the MVP
 works without external services. Production deployments can opt into OpenAI
 embeddings and PostgreSQL/pgvector using the configuration below.
 
+### Measured deterministic evaluation
+
+The repository includes 30 fully synthetic, human-annotated cases split into
+20 development and 10 held-out examples. Under the recorded local lexical
+conditions, making missing evidence explicitly `Insufficient information`
+improved overall eligibility outcome accuracy from 0.6000 to 0.8333 and
+held-out accuracy from 0.6000 to 0.8000. Insufficient-information accuracy
+improved from 0.0000 to 1.0000; retrieval was unchanged at Recall@1 0.8824 and
+Recall@3 0.9412.
+
+These are small synthetic-set measurements, not admissions-accuracy or hosted
+performance claims. See `evaluation/REPORT.md` for methodology, remaining
+failures, proxy-metric caveats, and the saved per-case results.
+
 ### Production vector storage preparation
 
 The pgvector migration is at `apps/api/migrations/001_pgvector.sql`, and
@@ -169,15 +215,20 @@ application/authentication tables start in
 profiles are added by migrations `005_account_privacy.sql` and
 `006_candidate_profiles.sql`. Persistent abuse controls use
 `007_request_limits.sql`, with security cleanup indexes in
-`008_security_cleanup_indexes.sql`.
+`008_security_cleanup_indexes.sql`. Migration
+`009_document_extracted_text.sql` adds database-backed extracted document text
+for ephemeral-filesystem demo hosting.
 It creates a persistent `opportunity_chunks` table for OpenAI
 `text-embedding-3-small` vectors and a cosine-similarity HNSW index. Applying
 it requires PostgreSQL with the `pgvector` extension installed; local retrieval
 continues to work without that database.
 
 To activate persistent retrieval in a deployment, set `RETRIEVAL_PROVIDER=openai`,
-`RETRIEVAL_STORAGE=pgvector`, `OPENAI_API_KEY`, and `DATABASE_URL`, then apply
-the migration before starting the API.
+`RETRIEVAL_STORAGE=pgvector`, `OPENAI_API_KEY`, and `DATABASE_URL`. Run
+`python -m app.migrations` from `apps/api` before starting a non-containerized
+API. The API container runs the same migration command before Uvicorn starts.
+Applied filenames and checksums are recorded in `schema_migrations`; never edit
+an applied migration—add the next numbered file instead.
 
 ### Local pgvector development
 
@@ -188,8 +239,9 @@ docker compose up -d
 ```
 
 This starts PostgreSQL 16 with pgvector, the FastAPI service, and an Nginx-served
-production frontend. PostgreSQL automatically applies all migration files when
-its data volume is initialized. Open
+production frontend. PostgreSQL initializes a new volume, then the API's
+versioned runner records or applies every migration before serving requests.
+The same runner applies pending migrations to an existing volume. Open
 the web app at `http://localhost:8080` and the API at `http://localhost:8000`.
 
 The compose defaults use local lexical retrieval so no external API key is
@@ -203,8 +255,8 @@ DATABASE_URL=postgresql://applylens:applylens@localhost:5432/applylens
 OPENAI_API_KEY=your_key_here
 ```
 
-If the volume already exists, apply a changed migration manually or recreate
-the development volume with `docker compose down -v`.
+Do not recreate a volume merely to apply a migration. Add a new ordered SQL file
+and restart the API; checksum validation rejects edits to migration history.
 ## Local setup
 
 ### Web
@@ -232,6 +284,8 @@ checks configured runtime dependencies.
 For production deployment and recovery procedures, see
 [`docs/operations.md`](docs/operations.md). Start from
 `deploy/production.env.example`; never commit the populated production environment file.
+For the strict-zero-cost restricted demo, use the dated provider analysis and
+checklist in [`docs/deployment.md`](docs/deployment.md).
 For the first HTTPS staging environment, follow
 [`docs/staging-deployment.md`](docs/staging-deployment.md) and start from
 `deploy/staging.env.example`.
@@ -244,5 +298,9 @@ is recorded with
 
 ## MVP boundary
 
-The MVP handles candidate documents and Master's/PhD calls. It extracts requirements, displays citations, supports `Eligible`, `Not eligible`, `Unclear`, and `Action required`, compares opportunities, and tracks application tasks. It does not submit applications automatically.
+The MVP handles candidate documents and Master's/PhD calls. It extracts
+requirements, displays citations, distinguishes `Eligible`, `Not eligible`,
+and `Insufficient information`, compares opportunities, and tracks application
+tasks. Legacy saved reviews using `Unclear` or `Action required` remain readable.
+It does not submit applications automatically.
 

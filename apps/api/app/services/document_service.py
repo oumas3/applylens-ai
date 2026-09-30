@@ -3,7 +3,7 @@ from __future__ import annotations
 from io import BytesIO
 
 from pypdf import PdfReader
-from pypdf.errors import PdfReadError
+from pypdf.errors import FileNotDecryptedError, PdfReadError
 
 
 class DocumentExtractionError(ValueError):
@@ -12,26 +12,75 @@ class DocumentExtractionError(ValueError):
 
 class DocumentService:
     @staticmethod
-    def extract_text(content_type: str, file_bytes: bytes) -> str:
+    def extract_text(
+        content_type: str,
+        file_bytes: bytes,
+        *,
+        max_pages: int = 100,
+        max_chars: int = 500_000,
+    ) -> str:
+        if max_pages < 1:
+            raise ValueError("max_pages must be positive")
+        if max_chars < 1:
+            raise ValueError("max_chars must be positive")
+
         if content_type == "text/plain":
-            return file_bytes.decode("utf-8")
+            try:
+                text = file_bytes.decode("utf-8")
+            except UnicodeDecodeError as error:
+                raise DocumentExtractionError(
+                    "The text file must use UTF-8 encoding."
+                ) from error
+
+            if len(text) > max_chars:
+                raise DocumentExtractionError(
+                    f"Extracted text must not exceed {max_chars:,} characters."
+                )
+            if not text.strip():
+                raise DocumentExtractionError(
+                    "No readable text was found in the document."
+                )
+            return text
 
         if content_type == "application/pdf":
             try:
                 reader = PdfReader(BytesIO(file_bytes))
+                if reader.is_encrypted:
+                    raise DocumentExtractionError(
+                        "Encrypted PDFs are not supported."
+                    )
+                if len(reader.pages) > max_pages:
+                    page_label = "page" if max_pages == 1 else "pages"
+                    raise DocumentExtractionError(
+                        f"PDFs must not exceed {max_pages} {page_label}."
+                    )
+
                 pages_text: list[str] = []
+                extracted_chars = 0
 
                 for page in reader.pages:
                     page_text = page.extract_text()
 
                     if page_text:
                         pages_text.append(page_text)
+                        extracted_chars += len(page_text)
+                        if extracted_chars > max_chars:
+                            raise DocumentExtractionError(
+                                "Extracted text must not exceed "
+                                f"{max_chars:,} characters."
+                            )
 
-                return "\n".join(pages_text)
+                text = "\n".join(pages_text)
+                if not text.strip():
+                    raise DocumentExtractionError(
+                        "No readable text was found in the PDF. "
+                        "Scanned PDFs require OCR, which is not supported."
+                    )
+                return text
 
-            except PdfReadError as error:
+            except (FileNotDecryptedError, PdfReadError) as error:
                 raise DocumentExtractionError(
                     "The PDF could not be read."
                 ) from error
 
-        return ""
+        raise DocumentExtractionError("Unsupported document type.")

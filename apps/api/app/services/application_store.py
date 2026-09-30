@@ -93,7 +93,8 @@ class PostgresApplicationStore:
                 connection.execute(
                     """
                     SELECT id, user_id, original_filename, stored_filename, category,
-                           content_type, size_bytes, status, extracted_text_length, uploaded_at
+                           content_type, size_bytes, status, extracted_text_length,
+                           extracted_text, uploaded_at
                     FROM documents
                     ORDER BY uploaded_at, id
                     """
@@ -117,13 +118,15 @@ class PostgresApplicationStore:
                     """
                     INSERT INTO documents (
                         id, user_id, original_filename, stored_filename, category,
-                        content_type, size_bytes, status, extracted_text_length, uploaded_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        content_type, size_bytes, status, extracted_text_length,
+                        extracted_text, uploaded_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         record["id"], record["user_id"], record["original_filename"],
                         record["stored_filename"], record["category"], record["content_type"],
                         record["size_bytes"], record["status"], record["extracted_text_length"],
+                        record.get("extracted_text"),
                         self._json_value(record["uploaded_at"]),
                     ),
                 )

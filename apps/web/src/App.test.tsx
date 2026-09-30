@@ -113,6 +113,32 @@ describe('ApplyLens UI', () => {
     await waitFor(() => expect(screen.getByText(/API OFFLINE/)).toBeInTheDocument())
   })
 
+  it('loads a complete fictional opportunity sample', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((input: RequestInfo | URL, init?: RequestInit) =>
+        Promise.resolve(defaultFetchResponse(String(input), init?.method ?? 'GET'))
+      )
+    )
+
+    render(<App />)
+    await waitFor(() => expect(screen.getByText(/API CONNECTED/)).toBeInTheDocument())
+
+    fireEvent.click(screen.getByRole('button', { name: 'Load fictional sample' }))
+
+    const analysisForm = within(document.getElementById('opportunity-analysis-form')!)
+    expect(analysisForm.getByRole('textbox', { name: 'Opportunity title' })).toHaveValue(
+      'PhD in Responsible AI'
+    )
+    expect(analysisForm.getByRole('textbox', { name: 'Institution' })).toHaveValue(
+      'Northbridge University (fictional)'
+    )
+    expect(analysisForm.getByRole('textbox', { name: 'Requirements (one per line)' })).toHaveValue(
+      "Master's degree\nEnglish proficiency\nResearch experience"
+    )
+    expect(screen.getByText(/Fictional sample loaded/)).toBeInTheDocument()
+  })
+
   it('submits an analysis and displays the eligibility result', async () => {
     const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
       const url = String(input)
@@ -122,7 +148,7 @@ describe('ApplyLens UI', () => {
             title: 'PhD in AI',
             institution: 'Example University',
             degree_type: 'PhD',
-            eligibility: 'Action required',
+            eligibility: 'Insufficient information',
             matched_requirements: ["Bachelor's degree"],
             missing_requirements: ['English proficiency'],
             evidence_summary: ["Bachelor's degree completed"],
@@ -154,7 +180,7 @@ describe('ApplyLens UI', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Analyse opportunity' }))
 
     await waitFor(() => expect(screen.getByText('Review ready for PhD in AI.')).toBeInTheDocument())
-    expect(screen.getAllByText('Action required').length).toBeGreaterThan(0)
+    expect(screen.getAllByText('Insufficient information').length).toBeGreaterThan(0)
     expect(fetchMock).toHaveBeenCalledWith(
       expect.stringContaining('/api/v1/opportunities/analyse'),
       expect.objectContaining({ method: 'POST' })

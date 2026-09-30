@@ -22,6 +22,11 @@ SECURITY_CLEANUP_MIGRATION = (
     / "migrations"
     / "008_security_cleanup_indexes.sql"
 )
+DOCUMENT_TEXT_MIGRATION = (
+    Path(__file__).resolve().parents[1]
+    / "migrations"
+    / "009_document_extracted_text.sql"
+)
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -104,6 +109,13 @@ def test_security_cleanup_migration_indexes_session_expiry() -> None:
     assert "on sessions (expires_at)" in sql
 
 
+def test_document_text_migration_is_idempotent() -> None:
+    sql = DOCUMENT_TEXT_MIGRATION.read_text(encoding="utf-8").lower()
+
+    assert "alter table documents" in sql
+    assert "add column if not exists extracted_text text" in sql
+
+
 def test_compose_mounts_all_incremental_migrations() -> None:
     for filename in ("docker-compose.yml", "docker-compose.production.yml"):
         compose = (REPOSITORY_ROOT / filename).read_text(encoding="utf-8")
@@ -111,3 +123,4 @@ def test_compose_mounts_all_incremental_migrations() -> None:
         assert "006_candidate_profiles.sql:/docker-entrypoint-initdb.d/006_candidate_profiles.sql:ro" in compose
         assert "007_request_limits.sql:/docker-entrypoint-initdb.d/007_request_limits.sql:ro" in compose
         assert "008_security_cleanup_indexes.sql:/docker-entrypoint-initdb.d/008_security_cleanup_indexes.sql:ro" in compose
+        assert "009_document_extracted_text.sql:/docker-entrypoint-initdb.d/009_document_extracted_text.sql:ro" in compose

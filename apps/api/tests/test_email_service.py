@@ -1,5 +1,7 @@
 import logging
 
+import pytest
+
 from app.config import Settings
 from app.services.email_service import PasswordResetEmailSender, SMTP_TIMEOUT_SECONDS
 
@@ -15,6 +17,20 @@ def test_console_delivery_is_explicitly_development_only(caplog) -> None:
 
     assert "Development-only password reset link" in caplog.text
     assert "development-token" in caplog.text
+
+
+def test_disabled_delivery_never_logs_or_sends_a_reset_link(caplog) -> None:
+    sender = PasswordResetEmailSender(
+        Settings(_env_file=None, email_delivery="disabled")
+    )
+
+    with pytest.raises(RuntimeError, match="disabled"):
+        sender.send(
+            "candidate@example.com",
+            "https://app.example.com/?reset_token=secret-token",
+        )
+
+    assert "secret-token" not in caplog.text
 
 
 def test_smtp_delivery_uses_tls_authentication_and_expected_message(monkeypatch) -> None:

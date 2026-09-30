@@ -24,6 +24,9 @@ def test_retrieval_settings_have_stable_development_defaults() -> None:
     assert settings.retrieval_provider == "lexical"
     assert settings.retrieval_storage == "memory"
     assert settings.log_level == "INFO"
+    assert settings.document_storage == "local"
+    assert settings.document_max_pages == 100
+    assert settings.document_max_extracted_chars == 500_000
     assert settings.rate_limit_window_seconds == 60
     assert settings.registration_rate_limit == 5
     assert settings.password_reset_rate_limit == 5
@@ -181,14 +184,33 @@ def test_production_rejects_web_origin_with_path() -> None:
         )
 
 
-def test_production_requires_smtp_delivery() -> None:
-    with pytest.raises(ValidationError, match="EMAIL_DELIVERY must be smtp"):
+def test_production_rejects_console_email_delivery() -> None:
+    with pytest.raises(ValidationError, match="must be smtp or disabled"):
         Settings(
             _env_file=None,
             app_env="production",
             web_origin="https://app.applylens.example",
             database_url="postgresql://postgres/applylens",
         )
+
+
+def test_production_accepts_explicitly_disabled_password_recovery() -> None:
+    settings = Settings(
+        _env_file=None,
+        app_env="production",
+        web_origin="https://app.applylens.example",
+        database_url="postgresql://postgres/applylens",
+        email_delivery="disabled",
+        support_email="support@example.com",
+        incident_contact_email="incident@example.com",
+    )
+
+    assert settings.email_delivery == "disabled"
+
+
+def test_database_document_storage_requires_database_url() -> None:
+    with pytest.raises(ValidationError, match="DOCUMENT_STORAGE"):
+        Settings(_env_file=None, document_storage="database")
 
 
 def test_smtp_delivery_requires_complete_credentials() -> None:

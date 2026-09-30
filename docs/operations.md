@@ -32,35 +32,22 @@ release/support metadata, and the frontend application shell:
 python deploy/smoke_test.py --web-url https://app.example.com --api-url https://api.example.com
 ```
 
-PostgreSQL initialization scripts run only when the database volume is first created. For an existing database, apply new migration SQL explicitly before deploying the API that depends on it.
-
-For Sprint 10, apply the idempotent login-throttling migration to an existing database before updating the API:
-
-```powershell
-docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml exec -T postgres psql -U applylens -d applylens -f /docker-entrypoint-initdb.d/003_login_attempts.sql
-```
-
-For Sprint 11, apply the account-recovery-token migration before updating the API:
+PostgreSQL initialization scripts run only when the database volume is first
+created. ApplyLens also has a versioned runner for both new and existing
+databases. Run it before replacing a non-containerized API, or explicitly as a
+one-off Compose command:
 
 ```powershell
-docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml exec -T postgres psql -U applylens -d applylens -f /docker-entrypoint-initdb.d/004_password_reset_tokens.sql
+docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml run --rm api python -m app.migrations
 ```
 
-For Sprints 13 and 14, apply the privacy preference and candidate-profile
-migrations before updating the API:
-
-```powershell
-docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml exec -T postgres psql -U applylens -d applylens -f /docker-entrypoint-initdb.d/005_account_privacy.sql
-docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml exec -T postgres psql -U applylens -d applylens -f /docker-entrypoint-initdb.d/006_candidate_profiles.sql
-```
-
-For Sprint 16, apply the persistent request-limit migration before updating
-the API:
-
-```powershell
-docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml exec -T postgres psql -U applylens -d applylens -f /docker-entrypoint-initdb.d/007_request_limits.sql
-docker compose --env-file C:\secure\applylens-production.env -f docker-compose.production.yml exec -T postgres psql -U applylens -d applylens -f /docker-entrypoint-initdb.d/008_security_cleanup_indexes.sql
-```
+The API container runs this command automatically before Uvicorn starts, so a
+migration failure prevents the release from serving traffic. The runner uses a
+PostgreSQL advisory lock, records each filename and SHA-256 checksum in
+`schema_migrations`, and applies each pending file transactionally. Never edit
+an applied migration; create the next numbered SQL file. A checksum mismatch is
+a deployment error that requires restoring the original file or a reviewed
+forward migration.
 
 The `*_RATE_LIMIT` variables define requests allowed per configured
 `RATE_LIMIT_WINDOW_SECONDS`. Registration and password reset are limited by

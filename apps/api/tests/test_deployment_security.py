@@ -57,3 +57,32 @@ def test_production_compose_requires_launch_identity_and_contacts() -> None:
     )
     assert "SUPPORT_EMAIL: support@example.com" in workflow
     assert "INCIDENT_CONTACT_EMAIL: incident-response@example.com" in workflow
+
+
+def test_restricted_demo_blueprint_stays_on_free_safe_defaults() -> None:
+    blueprint = (REPOSITORY_ROOT / "render.yaml").read_text(encoding="utf-8")
+
+    for expected in (
+        "plan: free",
+        "dockerfilePath: ./Dockerfile.demo",
+        "healthCheckPath: /health/ready",
+        "autoDeployTrigger: checksPass",
+        "value: database",
+        "value: lexical",
+        "value: disabled",
+    ):
+        assert expected in blueprint
+
+    assert "OPENAI_API_KEY" not in blueprint
+    assert "RETRIEVAL_STORAGE\n        value: pgvector" not in blueprint
+
+
+def test_restricted_demo_image_builds_web_and_runs_migrations() -> None:
+    dockerfile = (REPOSITORY_ROOT / "Dockerfile.demo").read_text(encoding="utf-8")
+
+    assert "FROM node:24-alpine AS web-build" in dockerfile
+    assert "ARG VITE_API_URL=" in dockerfile
+    assert "COPY --from=web-build" in dockerfile
+    assert "ENV WEB_STATIC_DIR=" in dockerfile
+    assert "python -m app.migrations" in dockerfile
+    assert "${PORT:-10000}" in dockerfile

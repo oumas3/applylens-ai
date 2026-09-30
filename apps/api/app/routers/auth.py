@@ -187,8 +187,16 @@ def request_password_reset(
     http_request: Request,
     background_tasks: BackgroundTasks,
 ) -> MessageResponse:
-    enforce_rate_limit("password_reset", client_identity(http_request))
     settings = get_settings()
+    if settings.email_delivery == "disabled":
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail=(
+                "Password recovery is unavailable in this restricted demo. "
+                "Contact support for help."
+            ),
+        )
+    enforce_rate_limit("password_reset", client_identity(http_request))
     token = get_auth_service().create_password_reset_token(request.email.lower())
     if token is not None:
         reset_url = f"{settings.web_origin}/#{urlencode({'reset_token': token})}"

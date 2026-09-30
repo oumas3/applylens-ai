@@ -33,7 +33,13 @@ class OpportunityReview(BaseModel):
     id: int
     user_id: str | None = None
     title: str
-    eligibility: Literal["Eligible", "Not eligible", "Unclear", "Action required"]
+    eligibility: Literal[
+        "Eligible",
+        "Not eligible",
+        "Insufficient information",
+        "Unclear",
+        "Action required",
+    ]
     matched_requirements: list[str] = Field(default_factory=list)
     missing_requirements: list[str] = Field(default_factory=list)
     deadline: str | None = None
@@ -58,7 +64,7 @@ def _load_reviews() -> list[OpportunityReview]:
             ]
         except Exception:
             logger.exception("Unable to load reviews from PostgreSQL")
-            return []
+            raise RuntimeError("PostgreSQL reviews could not be loaded.")
 
     if not REVIEWS_FILE.exists():
         return []
@@ -164,6 +170,7 @@ def compare_reviews(
 
     eligibility_rank = {
         "Eligible": 0,
+        "Insufficient information": 1,
         "Action required": 1,
         "Unclear": 2,
         "Not eligible": 3,
