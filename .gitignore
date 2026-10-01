@@ -1,4 +1,5 @@
 .env
+.env.local
 deploy/*.env
 !deploy/*.env.example
 .venv/
@@ -13,3 +14,4 @@ apps/web/vite.config.d.ts
 *.pyc
 .DS_Store
 apps/api/storage/
+.neon
