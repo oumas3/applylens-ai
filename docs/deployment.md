@@ -1,101 +1,64 @@
-# Free restricted-demo deployment
+# Restricted demo deployment
 
-Provider facts were checked on 2026-09-28 against the official pages linked
-below. Recheck them before provisioning because free-plan terms can change.
+Last updated: 2026-10-03
 
-## Selected architecture
+This runbook is provider-neutral. ApplyLens is ready to run as one Docker web
+service backed by Neon PostgreSQL, but no public hosting provider is currently
+selected or verified.
 
-- One Render Free web service builds the React application and serves it from
-  FastAPI at the same HTTPS origin.
-- Neon Free provides PostgreSQL and the `pgvector` extension.
-- The public demo uses deterministic lexical retrieval. It makes no OpenAI or
-  other paid inference calls and does not describe lexical results as embedding
-  retrieval.
-- Uploaded source PDF/TXT bytes are discarded after bounded extraction. Only
-  extracted text and metadata are retained in PostgreSQL for the authenticated
-  user. The demo does not offer source-file downloads or OCR.
-- Password recovery is explicitly disabled. Registration, login, password
-  change while authenticated, account export, and account deletion remain
-  available. Render Free blocks outbound SMTP ports 25, 465, and 587.
+## Architecture
 
-This is a restricted personal-project demo, not a production service.
+- `Dockerfile.demo` builds the React application and serves it from FastAPI at
+  the same HTTPS origin.
+- Neon Free supplies PostgreSQL and `pgvector` through a pooled TLS connection.
+- The public demo uses deterministic lexical retrieval and makes no paid model
+  API calls.
+- Uploaded PDF/TXT bytes are discarded after bounded extraction. Extracted text
+  and metadata are retained in PostgreSQL for the authenticated user.
+- Password recovery remains disabled until a supported transactional email
+  service is configured and tested.
 
-## Why these providers
+## Hosting requirements
 
-### Render Free web service
+Choose a host only after verifying its current pricing and limits. It must:
 
-Official documentation:
+- build and run `Dockerfile.demo`;
+- provide public HTTPS and a configurable `PORT`;
+- allow outbound TLS connections to Neon;
+- inject secret environment variables without committing them;
+- probe `GET /health/ready` for readiness;
+- provide enough memory for FastAPI, PDF extraction, and the bundled React app;
+- permit the application to run without persistent local filesystem storage.
 
-- https://render.com/docs/free
-- https://render.com/docs/compute-plans
-- https://render.com/docs/deploys
-- https://render.com/docs/health-checks
+Do not add a payment method or select a paid plan for the strict-zero-cost demo.
 
-Verified constraints:
+## Required environment variables
 
-- Free web services receive 750 instance-hours per workspace each month.
-- A service spins down after 15 minutes without inbound traffic and can take
-  about one minute to wake.
-- The free instance is 0.1 CPU and 512 MB RAM and cannot scale beyond one
-  instance.
-- The filesystem is ephemeral and free services cannot attach persistent disks.
-- HTTPS, custom domains, log streams, and two recent rollback artifacts are
-  available.
-- Bandwidth/build overages can incur charges only if a payment method is added;
-  without one, Render suspends/limits the service instead. Do not add a payment
-  method for this strict-zero-cost demo.
-- `autoDeployTrigger: checksPass` prevents deploys when GitHub checks fail.
-- Render Free PostgreSQL expires after 30 days and is therefore not used.
+Configure these values in the selected host's secret manager:
 
-No artificial keep-alive traffic is permitted. The UI and walkthrough must set
-the expectation that the first request can take roughly one minute.
+- `DATABASE_URL`: Neon pooled connection string.
+- `WEB_ORIGIN`: exact public HTTPS origin.
+- `SUPPORT_EMAIL`: public support address shown to users.
+- `INCIDENT_CONTACT_EMAIL`: private operator contact.
 
-### Neon Free PostgreSQL
+Use these non-secret values:
 
-Official documentation and current announcements:
+```text
+APP_ENV=production
+DOCUMENT_STORAGE=database
+DOCUMENT_MAX_PAGES=100
+DOCUMENT_MAX_EXTRACTED_CHARS=500000
+RETRIEVAL_PROVIDER=lexical
+RETRIEVAL_STORAGE=memory
+EMAIL_DELIVERY=disabled
+PRODUCT_VERSION=0.1.0-beta.1
+RELEASE_CHANNEL=free-public-beta
+LOG_LEVEL=INFO
+```
 
-- https://neon.com/blog/neon-backend-is-ga
-- https://neon.com/blog/major-compute-price-reduction-on-neon
-- https://neon.com/docs/manage/endpoints
-- https://neon.com/blog/building-a-rag-application-with-llama-3-1-and-pgvector
+Do not configure `OPENAI_API_KEY` for the zero-cost demo.
 
-Verified constraints:
-
-- The current Free Plan announcement states 100 projects, 100 CU-hours per
-  project per month, 0.5 GB database storage per project, and 10 branches.
-- Compute scales to zero after inactivity by default; resumption adds database
-  cold-start latency.
-- Neon supplies `pgvector`; `CREATE EXTENSION vector` is supported.
-- Pooled connection strings are available and should be used by the demo.
-- The same announcement includes 5 GB object storage per project, but ApplyLens
-  does not need it because source uploads are intentionally not retained.
-- Neon's official material describes the free tier as no-card-required. Do not
-  upgrade to a usage-billed plan for this demo.
-
-Choose Neon's Frankfurt region to keep it near the Render Frankfurt service.
-
-## Deployment configuration
-
-`render.yaml` defines the free service, readiness health check, Frankfurt
-region, and CI-gated deployment. `Dockerfile.demo` builds the React bundle with
-a relative API URL, installs the FastAPI service, runs versioned migrations,
-and then starts Uvicorn on Render's `PORT`.
-
-Create a Neon Free project first and copy its pooled PostgreSQL connection
-string. When creating the Render Blueprint, supply these secret values:
-
-- `DATABASE_URL`: Neon pooled connection string; never commit it.
-- `WEB_ORIGIN`: final Render URL, for example
-  `https://applylens-ai-demo.onrender.com`.
-- `SUPPORT_EMAIL`: public address shown to users.
-- `INCIDENT_CONTACT_EMAIL`: private operator contact used by configuration and
-  runbooks; it is not returned by the API.
-
-The committed non-secret values select `DOCUMENT_STORAGE=database`, lexical
-retrieval, memory retrieval indexes, and disabled password-recovery email.
-Do not set `OPENAI_API_KEY` for the zero-cost demo.
-
-## Database bootstrap and recovery
+## Database bootstrap
 
 Every container start runs:
 
@@ -103,41 +66,36 @@ Every container start runs:
 python -m app.migrations
 ```
 
-The runner takes a PostgreSQL advisory lock, verifies checksums in
-`schema_migrations`, and applies pending files transactionally. A failure stops
-the API before it can pass readiness.
+The migration runner takes a PostgreSQL advisory lock, verifies checksums in
+`schema_migrations`, and applies pending migrations transactionally. A failure
+stops the API before it can pass readiness.
 
-Neon Free is not an audited backup system. Before a risky change, create a Neon
-branch or export the small demo database with `pg_dump`. Test restoration into a
-separate branch before claiming recovery is verified. Never put private user
-documents into a public sample or repository backup.
+Before a risky database change, create a Neon branch or export the database.
+Test restoration into a separate branch before claiming recovery is verified.
 
-## CI, redeploy, and rollback
+## Release process
 
-The Render service watches `main` and uses `checksPass`. Protect `main` in
-GitHub so pull requests require the backend, frontend, PostgreSQL/pgvector, and
-container jobs. A failing commit must not deploy.
-
-To redeploy, merge a reviewed pull request after all required checks pass.
-Render builds the exact merged revision. For rollback, select one of the two
-retained prior deploys in Render. Migrations are forward-only; roll back code
-only when the previous version remains compatible with the applied schema.
+1. Require the backend, frontend, PostgreSQL/pgvector, and container CI jobs to
+   pass for the exact revision.
+2. Build and deploy `Dockerfile.demo` on the selected host.
+3. Set the required environment variables through the host's secret manager.
+4. Run `deploy/smoke_test.py` against the final public URL.
+5. Complete the manual acceptance checklist below.
+6. Record the deployed revision and rollback procedure.
 
 ## Verification checklist
 
-- [ ] Render build and GitHub checks passed for the deployed commit.
+- [ ] Container build and GitHub checks pass for the deployed commit.
 - [ ] `/health` returns 200 over HTTPS with `X-Request-ID`.
-- [ ] `/health/ready` reports database `ok`.
-- [ ] The React shell loads from the same origin.
-- [ ] A fictional user can register, upload a synthetic TXT/PDF, ingest a
-  synthetic opportunity, review evidence/uncertainty, and create tasks.
-- [ ] Another user cannot access the first user's document/result IDs.
-- [ ] Extracted text survives a service restart; source bytes are not present
-  on the service filesystem after restart.
-- [ ] Password recovery shows the restricted-demo unavailability message.
-- [ ] A cold start resolves without leaving the UI indefinitely stuck.
+- [ ] `/health/ready` reports the database as `ok`.
+- [ ] The React application loads from the same origin.
+- [ ] A fictional user can register, upload a synthetic TXT/PDF, analyze a
+  synthetic opportunity, inspect evidence, and create tasks.
+- [ ] A second user cannot access the first user's records.
+- [ ] Extracted text survives a service restart.
+- [ ] Password recovery displays the restricted-demo message.
 - [ ] No server credential appears in the browser bundle.
 - [ ] `deploy/smoke_test.py` passes against the final URL.
 
-Until every item is checked against an authenticated provider deployment, the
-correct status is **deployment-ready**, not deployed.
+Until every item is checked against a real deployment, the correct project
+status is **deployment-ready**, not deployed.

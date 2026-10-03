@@ -104,8 +104,8 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
   pgvector, but the default demonstrable path is lexical/in-memory.
 - [ ] Page citations exist for opportunity PDFs. Applicant document evidence
   currently summarizes document-level text rather than page-level provenance.
-- [x] A dated Render Free plus Neon Free architecture decision, limitations,
-  recovery notes, and provider-specific configuration are documented.
+- [x] A provider-neutral Docker plus Neon Free architecture, limitations, and
+  recovery notes are documented.
 - [ ] The README now includes measured evaluation results, an architecture
   diagram, and a fictional sample walkthrough; refreshed screenshots still
   require a running demo.
@@ -119,8 +119,8 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
   accuracy, structured validity, and local-process latency.
 - [x] Real PostgreSQL/pgvector CI job is configured and pushed; its remote
   result still needs to be observed before merge.
-- [x] Free-host architecture and `docs/deployment.md` include dated official
-  pricing/limit sources and strict zero-cost safeguards.
+- [x] The deployment architecture is provider-neutral and keeps strict
+  zero-cost safeguards; provider terms must be verified before provisioning.
 - [ ] Verified public demo URL and restart/persistence acceptance evidence.
 
 ### Not verified because access or dependencies are missing

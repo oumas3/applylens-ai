@@ -22,8 +22,9 @@ assistance, missing-information flags, and application tasks.
   encrypted, corrupt, blank, invalid-UTF-8, and OCR-only inputs fail clearly.
 - A 30-case synthetic evaluation split into development and held-out cases,
   with saved baseline/improved results and honest proxy-metric limitations.
-- CI-gated container deployment configuration for a restricted Render Free and
-  Neon Free demo that uses local deterministic retrieval and no paid model API.
+- CI-gated, provider-neutral container deployment configuration for a
+  restricted Neon Free demo that uses deterministic retrieval and no paid
+  model API.
 
 ## CV-ready bullets
 
@@ -49,9 +50,9 @@ assistance, missing-information flags, and application tasks.
 - Why unknown evidence is not a negative decision: the product now emits
   `Insufficient information`, preventing absence of proof from becoming proof
   of ineligibility.
-- Why source bytes are discarded in the restricted demo: Render Free has an
-  ephemeral filesystem, so bounded extracted text is stored in PostgreSQL while
-  downloads and OCR are explicitly out of scope.
+- Why source bytes are discarded in the restricted demo: the application host
+  does not need persistent storage because bounded extracted text is stored in
+  PostgreSQL, while downloads and OCR are explicitly out of scope.
 - Why the app is not called production-ready: remote CI, provider deployment,
   cold-start behavior, restart persistence, backup restoration, and public
   tenant-isolation acceptance still require external verification.

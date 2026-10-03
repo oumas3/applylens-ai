@@ -18,16 +18,16 @@ release gates in [`docs/deployment.md`](docs/deployment.md).
 
 ```mermaid
 flowchart LR
-    Browser[React browser client] -->|same-origin HTTPS| API[FastAPI on Render Free]
+    Browser[React browser client] -->|same-origin HTTPS| API[FastAPI Docker service]
     API -->|pooled TLS connection| DB[(Neon Free PostgreSQL)]
     API --> Rules[Local lexical retrieval and deterministic eligibility rules]
 ```
 
 The free demo deliberately has no paid model dependency. It stores bounded
 extracted text in PostgreSQL and discards uploaded source bytes, which avoids
-depending on Render's ephemeral filesystem. `Dockerfile.demo` serves the built
-React app and API from one container; `render.yaml` keeps deployment gated on
-passing checks.
+depending on persistent application-host storage. `Dockerfile.demo` serves the
+built React app and API from one provider-neutral container. A hosting provider
+will be selected separately after its current free-tier terms are verified.
 
 ### Reviewer walkthrough
 
