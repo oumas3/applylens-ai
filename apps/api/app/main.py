@@ -20,7 +20,11 @@ from app.observability import (
     UnhandledExceptionMiddleware,
     configure_request_logger,
 )
-from app.security import SecurityHeadersMiddleware, TrustedOriginMiddleware
+from app.security import (
+    RequestBodyLimitMiddleware,
+    SecurityHeadersMiddleware,
+    TrustedOriginMiddleware,
+)
 
 
 class ProductInfo(BaseModel):
@@ -51,6 +55,10 @@ app = FastAPI(
     ),
 )
 
+app.add_middleware(
+    RequestBodyLimitMiddleware,
+    max_bytes=settings.request_max_body_bytes,
+)
 app.add_middleware(UnhandledExceptionMiddleware)
 app.add_middleware(
     CORSMiddleware,

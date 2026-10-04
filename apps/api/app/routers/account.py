@@ -103,9 +103,7 @@ def export_account_data(
         )
 
     exported_documents: list[dict[str, Any]] = []
-    for document in documents_router.documents.values():
-        if document.user_id != user_id:
-            continue
+    for document in documents_router.documents_for_user(user_id):
         exported_document = document.model_dump(mode="json")
         if document.extracted_text is not None:
             exported_document.update(
@@ -149,22 +147,19 @@ def export_account_data(
         documents=exported_documents,
         opportunities=[
             item.model_dump(mode="json")
-            for item in opportunities_router.ingested_opportunities
-            if item.user_id == user_id
+            for item in opportunities_router.opportunities_for_user(user_id)
         ],
         reviews=[
             item.model_dump(mode="json")
-            for item in reviews_router.reviews
-            if item.user_id == user_id
+            for item in reviews_router.reviews_for_user(user_id)
         ],
         tasks=[
             item.model_dump(mode="json")
-            for item in tasks_router.tasks
-            if item.user_id == user_id
+            for item in tasks_router.tasks_for_user(user_id)
         ],
         profile=(
-            profiles_router.profiles[user_id].model_dump(mode="json")
-            if user_id in profiles_router.profiles
+            profile.model_dump(mode="json")
+            if (profile := profiles_router.profile_for_user(user_id)) is not None
             else None
         ),
     )
@@ -189,15 +184,10 @@ def delete_account(
             detail="The current password is incorrect.",
         )
 
-    owned_documents = [
-        document
-        for document in documents_router.documents.values()
-        if document.user_id == user_id
-    ]
+    owned_documents = documents_router.documents_for_user(user_id)
     owned_opportunity_ids = {
         item.id
-        for item in opportunities_router.ingested_opportunities
-        if item.user_id == user_id
+        for item in opportunities_router.opportunities_for_user(user_id)
     }
 
     if not service.delete_user(user_id):

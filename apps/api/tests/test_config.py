@@ -27,6 +27,7 @@ def test_retrieval_settings_have_stable_development_defaults() -> None:
     assert settings.document_storage == "local"
     assert settings.document_max_pages == 100
     assert settings.document_max_extracted_chars == 500_000
+    assert settings.request_max_body_bytes == 12 * 1024 * 1024
     assert settings.rate_limit_window_seconds == 60
     assert settings.registration_rate_limit == 5
     assert settings.password_reset_rate_limit == 5

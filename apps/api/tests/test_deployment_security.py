@@ -35,6 +35,7 @@ def test_production_compose_passes_every_abuse_control_setting() -> None:
         "FREE_BETA_OPPORTUNITY_LIMIT",
         "FREE_BETA_REVIEW_LIMIT",
         "FREE_BETA_TASK_LIMIT",
+        "REQUEST_MAX_BODY_BYTES",
     ):
         assert f"{variable}: ${{{variable}:-" in compose
 
@@ -87,3 +88,17 @@ def test_restricted_demo_image_builds_web_and_runs_migrations() -> None:
     assert "ENV WEB_STATIC_DIR=" in dockerfile
     assert "python -m app.migrations" in dockerfile
     assert "${PORT:-10000}" in dockerfile
+
+
+def test_restricted_demo_build_context_excludes_local_secrets_and_artifacts() -> None:
+    dockerignore = (REPOSITORY_ROOT / ".dockerignore").read_text(encoding="utf-8")
+
+    for excluded in (
+        ".git",
+        ".env",
+        ".neon",
+        "**/node_modules",
+        "**/.venv",
+        "apps/api/storage",
+    ):
+        assert excluded in dockerignore.splitlines()

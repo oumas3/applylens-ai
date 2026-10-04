@@ -8,10 +8,10 @@ import re
 from uuid import uuid4
 
 from fastapi import APIRouter, Depends, Form, HTTPException, UploadFile, status
-from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field
+from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, StringConstraints
 from pypdf import PdfReader
 from pypdf.errors import PdfReadError
-from typing import Literal
+from typing import Annotated, Literal
 
 from app.config import get_settings
 from app.concurrency import guarded
@@ -19,11 +19,15 @@ from app.rate_limiting import enforce_rate_limit
 from app.quotas import enforce_account_quota
 from app.routers.auth import get_current_user
 from app.routers.documents import (
-    documents,
+    document_for_user,
     read_document_pages,
     read_upload_bytes,
 )
-from app.routers.profiles import profile_evidence, profiles, referenced_document_ids
+from app.routers.profiles import (
+    profile_evidence,
+    profile_for_user,
+    referenced_document_ids,
+)
 from app.services.document_service import DocumentExtractionError, DocumentService
 from app.services.application_store import PostgresApplicationStore
 from app.services.embedding_service import (
@@ -45,6 +49,11 @@ router = APIRouter(
 )
 logger = logging.getLogger(__name__)
 
+ShortText = Annotated[str, StringConstraints(max_length=500)]
+RequirementText = Annotated[str, StringConstraints(max_length=2_000)]
+EvidenceText = Annotated[str, StringConstraints(max_length=10_000)]
+DocumentId = Annotated[str, StringConstraints(max_length=64)]
+
 OPPORTUNITIES_FILE = Path(__file__).resolve().parents[2] / "storage" / "opportunities.json"
 runtime_settings = get_settings()
 application_store = (
@@ -57,15 +66,19 @@ application_store = (
 class OpportunityIngestRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    title: str = Field(..., min_length=1)
-    source_text: str = Field(..., min_length=1)
-    institution: str | None = None
-    degree_type: str | None = None
-    source_name: str | None = None
+    title: str = Field(..., min_length=1, max_length=300)
+    source_text: str = Field(
+        ...,
+        min_length=1,
+        max_length=runtime_settings.document_max_extracted_chars,
+    )
+    institution: ShortText | None = None
+    degree_type: ShortText | None = None
+    source_name: ShortText | None = None
     source_url: AnyHttpUrl | None = None
-    deadline: str | None = None
+    deadline: ShortText | None = None
     deadline_date: date | None = None
-    funding: str | None = None
+    funding: RequirementText | None = None
 
 
 class RequirementCitation(BaseModel):
@@ -93,24 +106,22 @@ class OpportunityRecord(BaseModel):
 class OpportunityIngestAnalysisRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    evidence: list[str] = Field(default_factory=list)
-    document_ids: list[str] = Field(default_factory=list)
+    evidence: list[EvidenceText] = Field(default_factory=list, max_length=100)
+    document_ids: list[DocumentId] = Field(default_factory=list, max_length=25)
 
 
 class EvidenceSearchRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    query: str = Field(..., min_length=1)
+    query: str = Field(..., min_length=1, max_length=1_000)
     top_k: int = Field(default=5, ge=1, le=20)
 
 
 def _load_opportunities() -> list[OpportunityRecord]:
     if application_store is not None:
         try:
-            return [
-                OpportunityRecord.model_validate(item)
-                for item in application_store.load_opportunities()
-            ]
+            application_store.load_opportunities()
+            return []
         except Exception:
             logger.exception("Unable to load opportunities from PostgreSQL")
             raise RuntimeError(
@@ -157,6 +168,26 @@ _retrieval_cache: dict[
         InMemoryRetriever | EmbeddingRetriever | PgVectorRetriever,
     ],
 ] = {}
+
+
+def opportunities_for_user(user_id: str) -> list[OpportunityRecord]:
+    if application_store is not None:
+        return [
+            OpportunityRecord.model_validate(item)
+            for item in application_store.load_opportunities(user_id)
+        ]
+    return [item for item in ingested_opportunities if item.user_id == user_id]
+
+
+def opportunity_for_user(user_id: str, opportunity_id: str) -> OpportunityRecord | None:
+    return next(
+        (
+            item
+            for item in opportunities_for_user(user_id)
+            if item.id == opportunity_id
+        ),
+        None,
+    )
 
 
 def _extract_requirements(source_text: str) -> list[str]:
@@ -260,17 +291,17 @@ def _extract_funding(source_text: str) -> str | None:
 class OpportunityAnalysisRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    title: str = Field(..., min_length=1)
-    institution: str | None = None
-    degree_type: str | None = None
-    requirements: list[str] = Field(default_factory=list)
-    evidence: list[str] = Field(default_factory=list)
-    document_ids: list[str] = Field(default_factory=list)
+    title: str = Field(..., min_length=1, max_length=300)
+    institution: ShortText | None = None
+    degree_type: ShortText | None = None
+    requirements: list[RequirementText] = Field(default_factory=list, max_length=100)
+    evidence: list[EvidenceText] = Field(default_factory=list, max_length=100)
+    document_ids: list[DocumentId] = Field(default_factory=list, max_length=25)
     application_url: AnyHttpUrl | None = None
-    required_documents: list[str] = Field(default_factory=list)
-    deadline: str | None = None
+    required_documents: list[ShortText] = Field(default_factory=list, max_length=100)
+    deadline: ShortText | None = None
     deadline_date: date | None = None
-    funding: str | None = None
+    funding: RequirementText | None = None
 
 
 EligibilityStatus = Literal[
@@ -386,9 +417,9 @@ def _document_evidence(
     extracted_text: list[str] = []
 
     for document_id in document_ids:
-        document = documents.get(document_id)
+        document = document_for_user(user_id, document_id)
 
-        if document is None or document.user_id != user_id:
+        if document is None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail=f"Document not found: {document_id}",
@@ -455,6 +486,18 @@ def ingest_opportunity(
         deadline_date=request.deadline_date or extracted_deadline_date,
         funding=request.funding or _extract_funding(request.source_text),
     )
+
+    if application_store is not None:
+        created = application_store.create_opportunity(
+            opportunity.model_dump(mode="python"),
+            limit=runtime_settings.free_beta_opportunity_limit,
+        )
+        if not created:
+            enforce_account_quota(
+                "opportunity",
+                runtime_settings.free_beta_opportunity_limit + 1,
+            )
+        return opportunity
 
     # Count-check-append atomically per user; see app/concurrency.py.
     with guarded("opportunity-quota", str(user["id"])):
@@ -551,7 +594,17 @@ async def ingest_opportunity_file(
 
             if page_citations:
                 opportunity.requirement_citations = page_citations
-                _persist_opportunities(str(user["id"]))
+                if application_store is not None:
+                    application_store.update_opportunity_citations(
+                        str(user["id"]),
+                        opportunity.id,
+                        [
+                            citation.model_dump(mode="python")
+                            for citation in page_citations
+                        ],
+                    )
+                else:
+                    _persist_opportunities(str(user["id"]))
         except PdfReadError:
             # DocumentService already validated the PDF; keep the general
             # source citation when page-level extraction is unavailable.
@@ -568,7 +621,7 @@ async def ingest_opportunity_file(
 def list_ingested_opportunities(
     user: dict[str, str | bool] = Depends(get_current_user),
 ) -> list[OpportunityRecord]:
-    return [item for item in ingested_opportunities if item.user_id == user["id"]]
+    return opportunities_for_user(str(user["id"]))
 
 
 @router.delete(
@@ -579,6 +632,16 @@ def delete_ingested_opportunity(
     opportunity_id: str,
     user: dict[str, str | bool] = Depends(get_current_user),
 ) -> None:
+    user_id = str(user["id"])
+    if application_store is not None:
+        if not application_store.delete_opportunity(user_id, opportunity_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Ingested opportunity not found.",
+            )
+        _retrieval_cache.pop(opportunity_id, None)
+        return
+
     for index, opportunity in enumerate(ingested_opportunities):
         if opportunity.id == opportunity_id and opportunity.user_id == user["id"]:
             ingested_opportunities.pop(index)
@@ -602,14 +665,7 @@ def search_ingested_opportunity_evidence(
     request: EvidenceSearchRequest,
     user: dict[str, str | bool] = Depends(get_current_user),
 ) -> list[RetrievalResult]:
-    opportunity = next(
-        (
-            item
-            for item in ingested_opportunities
-            if item.id == opportunity_id and item.user_id == user["id"]
-        ),
-        None,
-    )
+    opportunity = opportunity_for_user(str(user["id"]), opportunity_id)
     if opportunity is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -684,14 +740,7 @@ def analyse_ingested_opportunity(
     request: OpportunityIngestAnalysisRequest,
     user: dict[str, str | bool] = Depends(get_current_user),
 ) -> OpportunityAnalysisResponse:
-    opportunity = next(
-        (
-            item
-            for item in ingested_opportunities
-            if item.id == opportunity_id and item.user_id == user["id"]
-        ),
-        None,
-    )
+    opportunity = opportunity_for_user(str(user["id"]), opportunity_id)
 
     if opportunity is None:
         raise HTTPException(
@@ -732,12 +781,12 @@ def analyse_opportunity(
     normalized_evidence = [item.strip() for item in request.evidence if item and item.strip()]
     normalized_evidence.extend(_document_evidence(request.document_ids, str(user["id"])))
     user_id = str(user["id"])
-    profile = profiles.get(user_id)
+    profile = profile_for_user(user_id)
     profile_documents = {}
     if profile is not None:
         for document_id in referenced_document_ids(profile):
-            document = documents.get(document_id)
-            if document is None or document.user_id != user_id:
+            document = document_for_user(user_id, document_id)
+            if document is None:
                 continue
             try:
                 pages = read_document_pages(document)

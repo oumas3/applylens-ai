@@ -6,6 +6,7 @@ import argparse
 from datetime import datetime, timezone
 import json
 import math
+import os
 from pathlib import Path
 import platform
 import statistics
@@ -20,6 +21,13 @@ ROOT = Path(__file__).resolve().parents[1]
 API_ROOT = ROOT / "apps" / "api"
 if str(API_ROOT) not in sys.path:
     sys.path.insert(0, str(API_ROOT))
+
+# Evaluation is deterministic and must never inherit a linked deployment
+# database or external retrieval provider from the repository's ignored .env.
+os.environ["DATABASE_URL"] = " "
+os.environ["DOCUMENT_STORAGE"] = "local"
+os.environ["RETRIEVAL_PROVIDER"] = "lexical"
+os.environ["RETRIEVAL_STORAGE"] = "memory"
 
 from app.routers.opportunities import (  # noqa: E402
     OpportunityAnalysisRequest,

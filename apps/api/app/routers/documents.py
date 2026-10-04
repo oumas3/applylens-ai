@@ -63,7 +63,7 @@ class DocumentMetadata(BaseModel):
 
     id: str
     user_id: str | None = None
-    original_filename: str = Field(..., min_length=1)
+    original_filename: str = Field(..., min_length=1, max_length=255)
     stored_filename: str
     category: DocumentCategory
     content_type: str
@@ -88,11 +88,8 @@ class DocumentUploadRequest(BaseModel):
 def _load_documents() -> dict[str, DocumentMetadata]:
     if application_store is not None:
         try:
-            loaded = [
-                DocumentMetadata.model_validate(item)
-                for item in application_store.load_documents()
-            ]
-            return {document.id: document for document in loaded}
+            application_store.load_documents()
+            return {}
         except Exception:
             logger.exception("Unable to load document metadata from PostgreSQL")
             raise RuntimeError(
@@ -145,6 +142,40 @@ def _persist_documents(user_id: str | None = None) -> None:
 
 
 documents: dict[str, DocumentMetadata] = _load_documents()
+
+
+def documents_for_user(user_id: str) -> list[DocumentMetadata]:
+    if application_store is not None:
+        return [
+            DocumentMetadata.model_validate(item)
+            for item in application_store.load_documents(user_id)
+        ]
+    return [document for document in documents.values() if document.user_id == user_id]
+
+
+def document_for_user(user_id: str, document_id: str) -> DocumentMetadata | None:
+    if application_store is not None:
+        return next(
+            (
+                document
+                for document in documents_for_user(user_id)
+                if document.id == document_id
+            ),
+            None,
+        )
+    document = documents.get(document_id)
+    return document if document is not None and document.user_id == user_id else None
+
+
+def document_record(document: DocumentMetadata) -> dict:
+    return {
+        **document.model_dump(mode="python"),
+        "extracted_text": document.extracted_text,
+        "extracted_pages": [
+            page.model_dump(mode="python")
+            for page in document.extracted_pages
+        ],
+    }
 
 
 def read_document_text(document: DocumentMetadata) -> str:
@@ -203,9 +234,7 @@ async def upload_document(
     # before we commit -- see the `guarded()` block below. Without that
     # second check, two concurrent uploads could both pass this early count
     # and both get written, exceeding the account's quota.
-    owned_document_count = sum(
-        document.user_id == user["id"] for document in documents.values()
-    )
+    owned_document_count = len(documents_for_user(str(user["id"])))
     enforce_account_quota("document", owned_document_count + 1)
     filename = file.filename or "document.pdf"
     category_value = category or "OTHER"
@@ -311,6 +340,20 @@ async def upload_document(
         uploaded_at=datetime.now(timezone.utc),
     )
 
+    if application_store is not None:
+        created = application_store.create_document(
+            document_record(metadata),
+            limit=settings.free_beta_document_limit,
+        )
+        if not created:
+            if settings.document_storage == "local":
+                file_storage.delete(stored_filename)
+            enforce_account_quota(
+                "document",
+                settings.free_beta_document_limit + 1,
+            )
+        return metadata
+
     with guarded("document-quota", str(user["id"])):
         owned_document_count = sum(
             document.user_id == user["id"] for document in documents.values()
@@ -338,7 +381,7 @@ async def upload_document(
     response_model=list[DocumentMetadata],
 )
 def list_documents(user: dict[str, str | bool] = Depends(get_current_user)) -> list[DocumentMetadata]:
-    return [document for document in documents.values() if document.user_id == user["id"]]
+    return documents_for_user(str(user["id"]))
 
 
 @router.get(
@@ -346,9 +389,9 @@ def list_documents(user: dict[str, str | bool] = Depends(get_current_user)) -> l
     response_model=DocumentMetadata,
 )
 def get_document(document_id: str, user: dict[str, str | bool] = Depends(get_current_user)) -> DocumentMetadata:
-    document = documents.get(document_id)
+    document = document_for_user(str(user["id"]), document_id)
 
-    if document is None or document.user_id != user["id"]:
+    if document is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found.",
@@ -362,9 +405,9 @@ def get_document(document_id: str, user: dict[str, str | bool] = Depends(get_cur
     response_class=PlainTextResponse,
 )
 def get_document_text(document_id: str, user: dict[str, str | bool] = Depends(get_current_user)) -> str:
-    document = documents.get(document_id)
+    document = document_for_user(str(user["id"]), document_id)
 
-    if document is None or document.user_id != user["id"]:
+    if document is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found.",
@@ -378,18 +421,27 @@ def get_document_text(document_id: str, user: dict[str, str | bool] = Depends(ge
     status_code=status.HTTP_204_NO_CONTENT,
 )
 def delete_document(document_id: str, user: dict[str, str | bool] = Depends(get_current_user)) -> None:
-    document = documents.get(document_id)
+    user_id = str(user["id"])
+    document = document_for_user(user_id, document_id)
 
-    if document is None or document.user_id != user["id"]:
+    if document is None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Document not found.",
         )
 
-    documents.pop(document_id)
+    if application_store is not None:
+        if not application_store.delete_document(user_id, document_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Document not found.",
+            )
+    else:
+        documents.pop(document_id)
     if document.extracted_text is None:
         file_storage.delete(document.stored_filename)
-    _persist_documents(str(user["id"]))
+    if application_store is None:
+        _persist_documents(user_id)
     from app.routers.profiles import remove_document_reference
 
-    remove_document_reference(str(user["id"]), document_id)
+    remove_document_reference(user_id, document_id)

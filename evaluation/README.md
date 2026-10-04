@@ -8,6 +8,9 @@ and instruction-like text embedded inside documents.
 
 The labels are human-authored rules for this repository, not admissions advice.
 No LLM judge or paid API is used.
+The runner also overrides deployment database and retrieval settings before it
+imports the API, so a linked local `.env` cannot send evaluation traffic to
+Neon or an external model provider.
 
 ## Metrics
 

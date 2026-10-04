@@ -20,6 +20,67 @@ SECURITY_HEADERS = (
 )
 
 
+class _RequestBodyTooLarge(Exception):
+    pass
+
+
+class RequestBodyLimitMiddleware:
+    """Reject request bodies that exceed a configured streaming byte limit."""
+
+    def __init__(self, app: Any, *, max_bytes: int) -> None:
+        self.app = app
+        self.max_bytes = max_bytes
+
+    async def __call__(self, scope: dict[str, Any], receive: Any, send: Any) -> None:
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        headers = _header_map(scope)
+        raw_content_length = headers.get(b"content-length")
+        if raw_content_length:
+            try:
+                content_length = int(raw_content_length)
+            except ValueError:
+                content_length = 0
+            if content_length > self.max_bytes:
+                response = JSONResponse(
+                    status_code=413,
+                    content={"detail": "The request body is too large."},
+                )
+                await response(scope, receive, send)
+                return
+
+        received_bytes = 0
+        response_started = False
+
+        async def limited_receive() -> dict[str, Any]:
+            nonlocal received_bytes
+            message = await receive()
+            if message["type"] == "http.request":
+                received_bytes += len(message.get("body", b""))
+                if received_bytes > self.max_bytes:
+                    raise _RequestBodyTooLarge
+            return message
+
+        async def tracked_send(message: dict[str, Any]) -> None:
+            nonlocal response_started
+            if message["type"] == "http.response.start":
+                response_started = True
+            await send(message)
+
+        try:
+            await self.app(scope, limited_receive, tracked_send)
+        except _RequestBodyTooLarge:
+            if response_started:
+                raise
+            response = JSONResponse(
+                status_code=413,
+                content={"detail": "The request body is too large."},
+            )
+            await response(scope, receive, send)
+
+
 def _header_map(scope: dict[str, Any]) -> dict[bytes, bytes]:
     return {key.lower(): value for key, value in scope.get("headers", [])}
 

@@ -26,6 +26,11 @@ class Settings(BaseSettings):
         ge=1_000,
         le=10_000_000,
     )
+    request_max_body_bytes: int = Field(
+        default=12 * 1024 * 1024,
+        ge=1024 * 1024,
+        le=100 * 1024 * 1024,
+    )
     retrieval_chunk_max_chars: int = Field(default=1200, gt=0, le=10000)
     retrieval_chunk_overlap_chars: int = Field(default=100, ge=0, le=9999)
     retrieval_embedding_dimension: int = Field(default=32, gt=0, le=2048)

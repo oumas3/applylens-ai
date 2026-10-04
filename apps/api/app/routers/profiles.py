@@ -13,7 +13,7 @@ from pydantic import AnyHttpUrl, BaseModel, ConfigDict, Field, field_validator, 
 
 from app.config import get_settings
 from app.routers.auth import get_current_user
-from app.routers.documents import documents
+from app.routers.documents import documents_for_user
 from app.services.application_store import PostgresApplicationStore
 from app.services.document_service import ExtractedPage
 
@@ -37,12 +37,14 @@ application_store = (
 class EvidenceLinkedItem(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    id: str = Field(default_factory=lambda: str(uuid4()), min_length=1)
-    document_ids: list[str] = Field(default_factory=list)
+    id: str = Field(default_factory=lambda: str(uuid4()), min_length=1, max_length=64)
+    document_ids: list[str] = Field(default_factory=list, max_length=25)
 
     @field_validator("document_ids")
     @classmethod
     def unique_document_ids(cls, values: list[str]) -> list[str]:
+        if any(len(item) > 64 for item in values):
+            raise ValueError("document IDs must not exceed 64 characters")
         return list(dict.fromkeys(item for item in values if item))
 
 
@@ -135,11 +137,8 @@ class CandidateProfile(CandidateProfileUpdate):
 def _load_profiles() -> dict[str, CandidateProfile]:
     if application_store is not None:
         try:
-            loaded = [
-                CandidateProfile.model_validate(item)
-                for item in application_store.load_profiles()
-            ]
-            return {profile.user_id: profile for profile in loaded}
+            application_store.load_profiles()
+            return {}
         except Exception:
             logger.exception("Unable to load candidate profiles from PostgreSQL")
             raise RuntimeError(
@@ -181,6 +180,13 @@ def _persist_profiles(user_id: str | None = None) -> None:
 
 
 profiles: dict[str, CandidateProfile] = _load_profiles()
+
+
+def profile_for_user(user_id: str) -> CandidateProfile | None:
+    if application_store is not None:
+        records = application_store.load_profiles(user_id)
+        return CandidateProfile.model_validate(records[0]) if records else None
+    return profiles.get(user_id)
 
 
 def empty_profile(user_id: str) -> CandidateProfile:
@@ -328,7 +334,7 @@ def get_profile(
     user: dict[str, str | bool] = Depends(get_current_user),
 ) -> CandidateProfile:
     user_id = str(user["id"])
-    return profiles.get(user_id, empty_profile(user_id))
+    return profile_for_user(user_id) or empty_profile(user_id)
 
 
 @router.put("", response_model=CandidateProfile)
@@ -338,13 +344,14 @@ def save_profile(
 ) -> CandidateProfile:
     user_id = str(user["id"])
     referenced_ids = referenced_document_ids(request)
+    owned_document_ids = {
+        document.id
+        for document in documents_for_user(user_id)
+    }
     invalid_ids = sorted(
         document_id
         for document_id in referenced_ids
-        if (
-            document_id not in documents
-            or documents[document_id].user_id != user_id
-        )
+        if document_id not in owned_document_ids
     )
     if invalid_ids:
         raise HTTPException(
@@ -360,8 +367,11 @@ def save_profile(
         updated_at=datetime.now(timezone.utc),
         **request.model_dump(mode="python"),
     )
-    profiles[user_id] = profile
-    _persist_profiles(user_id)
+    if application_store is not None:
+        application_store.upsert_profile(profile.model_dump(mode="python"))
+    else:
+        profiles[user_id] = profile
+        _persist_profiles(user_id)
     return profile
 
 
@@ -375,12 +385,15 @@ def delete_profile(
     user: dict[str, str | bool] = Depends(get_current_user),
 ) -> None:
     user_id = str(user["id"])
-    profiles.pop(user_id, None)
-    _persist_profiles(user_id)
+    if application_store is not None:
+        application_store.delete_profile(user_id)
+    else:
+        profiles.pop(user_id, None)
+        _persist_profiles(user_id)
 
 
 def remove_document_reference(user_id: str, document_id: str) -> None:
-    profile = profiles.get(user_id)
+    profile = profile_for_user(user_id)
     if profile is None:
         return
     changed = False
@@ -400,4 +413,7 @@ def remove_document_reference(user_id: str, document_id: str) -> None:
                 changed = True
     if changed:
         profile.updated_at = datetime.now(timezone.utc)
-        _persist_profiles(user_id)
+        if application_store is not None:
+            application_store.upsert_profile(profile.model_dump(mode="python"))
+        else:
+            _persist_profiles(user_id)

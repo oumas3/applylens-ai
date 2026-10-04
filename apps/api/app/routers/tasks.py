@@ -1,10 +1,10 @@
 import json
 import logging
 from pathlib import Path
-from typing import Literal
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, StringConstraints
 from app.routers.auth import get_current_user
 from app.concurrency import guarded
 from app.config import get_settings
@@ -17,6 +17,8 @@ router = APIRouter(
     dependencies=[Depends(get_current_user)],
 )
 logger = logging.getLogger(__name__)
+
+TaskRequirement = Annotated[str, StringConstraints(max_length=2_000)]
 
 TASKS_FILE = Path(__file__).resolve().parents[2] / "storage" / "tasks.json"
 settings = get_settings()
@@ -32,8 +34,8 @@ class TaskItem(BaseModel):
 
     id: int
     user_id: str | None = None
-    opportunity_id: str | None = None
-    title: str
+    opportunity_id: str | None = Field(default=None, max_length=64)
+    title: str = Field(..., min_length=1, max_length=2_100)
     status: Literal["pending", "in_progress", "completed"]
 
 
@@ -44,10 +46,13 @@ class TaskStatusUpdate(BaseModel):
 class TaskGenerationRequest(BaseModel):
     model_config = ConfigDict(str_strip_whitespace=True)
 
-    opportunity_id: str | None = None
-    missing_requirements: list[str] = Field(default_factory=list)
-    deadline: str | None = None
-    funding: str | None = None
+    opportunity_id: str | None = Field(default=None, max_length=64)
+    missing_requirements: list[TaskRequirement] = Field(
+        default_factory=list,
+        max_length=100,
+    )
+    deadline: str | None = Field(default=None, max_length=500)
+    funding: str | None = Field(default=None, max_length=2_000)
 
 
 DEFAULT_TASKS = [
@@ -58,7 +63,8 @@ DEFAULT_TASKS = [
 def _load_tasks() -> list[TaskItem]:
     if application_store is not None:
         try:
-            return [TaskItem.model_validate(item) for item in application_store.load_tasks()]
+            application_store.load_tasks()
+            return []
         except Exception:
             logger.exception("Unable to load tasks from PostgreSQL")
             raise RuntimeError("PostgreSQL tasks could not be loaded.")
@@ -95,9 +101,18 @@ def _persist_tasks(user_id: str | None = None) -> None:
 tasks = _load_tasks()
 
 
+def tasks_for_user(user_id: str) -> list[TaskItem]:
+    if application_store is not None:
+        return [
+            TaskItem.model_validate(item)
+            for item in application_store.load_tasks(user_id)
+        ]
+    return [task for task in tasks if task.user_id == user_id]
+
+
 @router.get("", response_model=list[TaskItem], status_code=status.HTTP_200_OK)
 def list_tasks(user: dict[str, str | bool] = Depends(get_current_user)) -> list[TaskItem]:
-    return [task for task in tasks if task.user_id == user["id"]]
+    return tasks_for_user(str(user["id"]))
 
 
 @router.post(
@@ -124,6 +139,23 @@ def generate_tasks(
         task_titles.append("Review funding requirements and available support")
 
     generated_tasks: list[TaskItem] = []
+
+    if application_store is not None:
+        generated_records = application_store.replace_task_scope(
+            str(user["id"]),
+            request.opportunity_id,
+            task_titles,
+            limit=settings.free_beta_task_limit,
+        )
+        if generated_records is None:
+            enforce_account_quota("task", settings.free_beta_task_limit + 1)
+        generated_tasks = [
+            TaskItem.model_validate(record)
+            for record in generated_records or []
+        ]
+        if request.opportunity_id is None:
+            return tasks_for_user(str(user["id"]))
+        return generated_tasks
 
     # Only drop this user's tasks that belong to the *same* scope being
     # regenerated (same opportunity_id, including the "no opportunity"
@@ -178,6 +210,19 @@ def update_task_status(
     update: TaskStatusUpdate,
     user: dict[str, str | bool] = Depends(get_current_user),
 ) -> TaskItem:
+    if application_store is not None:
+        updated = application_store.update_task_status(
+            str(user["id"]),
+            task_id,
+            update.status,
+        )
+        if updated is not None:
+            return TaskItem.model_validate(updated)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found.",
+        )
+
     for index, task in enumerate(tasks):
         if task.id == task_id and task.user_id == user["id"]:
             updated_task = task.model_copy(update={"status": update.status})
@@ -196,6 +241,14 @@ def delete_task(
     task_id: int,
     user: dict[str, str | bool] = Depends(get_current_user),
 ) -> None:
+    if application_store is not None:
+        if application_store.delete_task(str(user["id"]), task_id):
+            return
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task not found.",
+        )
+
     for index, task in enumerate(tasks):
         if task.id == task_id and task.user_id == user["id"]:
             tasks.pop(index)
