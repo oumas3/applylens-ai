@@ -4,7 +4,7 @@ ApplyLens AI turns Master's and PhD calls into evidence-based eligibility decisi
 
 ## Current verification
 
-- Backend test suite: 224 passing, 2 PostgreSQL integration tests skipped locally
+- Backend test suite: 227 passing, 2 PostgreSQL integration tests skipped locally
 - Deployment smoke-check suite: 7 passing tests
 - Frontend test suite: 18 passing tests
 - Frontend production build: passing

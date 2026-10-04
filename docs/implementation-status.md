@@ -1,6 +1,6 @@
 # ApplyLens AI implementation status
 
-Last updated: 2026-09-28
+Last updated: 2026-10-04
 
 This is the resumable engineering checklist for the ApplyLens AI personal
 project. A checked item means the behavior was verified in the current
@@ -36,9 +36,9 @@ deployment or production-scale validation.
 Pytest emitted one environmental warning because Windows denied writes to the
 existing `.pytest_cache` directory. Test execution itself succeeded.
 
-### Latest verification on 2026-09-28
+### Latest verification on 2026-10-04
 
-- [x] Backend suite: 224 passed, with 2 database integration tests skipped
+- [x] Backend suite: 227 passed, with 2 database integration tests skipped
   because no local PostgreSQL URL was configured.
 - [x] Frontend suite: 18 passed across 2 test files.
 - [x] Frontend TypeScript and production build passed.
@@ -102,8 +102,8 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
 
 - [ ] Retrieval supports lexical, deterministic hash, OpenAI embeddings, and
   pgvector, but the default demonstrable path is lexical/in-memory.
-- [ ] Page citations exist for opportunity PDFs. Applicant document evidence
-  currently summarizes document-level text rather than page-level provenance.
+- [x] Page citations exist for opportunity and applicant PDFs. Applicant PDF
+  evidence preserves page-level provenance through storage and analysis.
 - [x] A provider-neutral Docker plus Neon Free architecture, limitations, and
   recovery notes are documented.
 - [ ] The README now includes measured evaluation results, an architecture
@@ -164,7 +164,7 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
   process with the limitation explicit; prefer direct scoped queries.
 - [x] Add a small idempotent migration runner with an applied-version ledger.
 - [x] Add PostgreSQL/pgvector integration tests and a CI database service.
-- [ ] Observe the new integration job on GitHub before treating it as verified.
+- [x] PostgreSQL/pgvector integration passed on GitHub Actions for `4f70904`.
 
 ### Then — measurable AI quality and demo deployment
 
@@ -176,10 +176,9 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
   accuracy improved from 0.6000 to 0.8000; insufficient-information accuracy
   improved from 0.0000 to 1.0000. Retrieval was unchanged at Recall@1 0.8824
   and Recall@3 0.9412.
-- [ ] Improve page-level applicant evidence provenance where evaluation shows
-  it matters.
-- [x] Verify current official free-tier terms before choosing hosting.
-- [x] Implement provider-specific deployment config without paid resources.
+- [x] Preserve page-level applicant PDF evidence provenance in analysis output.
+- [x] Keep provider-neutral Docker packaging and strict zero-cost requirements.
+- [ ] Select a host only after verifying its current zero-cost terms.
 - [ ] Deploy only after CI passes and verify the public sample journey,
   isolation, failure states, cold starts, and persistence.
 - [x] Refresh README evidence, demo walkthrough, limitations, and CV bullets

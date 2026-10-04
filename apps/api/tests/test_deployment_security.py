@@ -59,22 +59,23 @@ def test_production_compose_requires_launch_identity_and_contacts() -> None:
     assert "INCIDENT_CONTACT_EMAIL: incident-response@example.com" in workflow
 
 
-def test_restricted_demo_blueprint_stays_on_free_safe_defaults() -> None:
-    blueprint = (REPOSITORY_ROOT / "render.yaml").read_text(encoding="utf-8")
+def test_restricted_demo_runbook_stays_provider_neutral_and_safe() -> None:
+    runbook = (REPOSITORY_ROOT / "docs" / "deployment.md").read_text(
+        encoding="utf-8"
+    )
 
     for expected in (
-        "plan: free",
-        "dockerfilePath: ./Dockerfile.demo",
-        "healthCheckPath: /health/ready",
-        "autoDeployTrigger: checksPass",
-        "value: database",
-        "value: lexical",
-        "value: disabled",
+        "`Dockerfile.demo`",
+        "`GET /health/ready`",
+        "DOCUMENT_STORAGE=database",
+        "RETRIEVAL_PROVIDER=lexical",
+        "EMAIL_DELIVERY=disabled",
+        "Do not configure `OPENAI_API_KEY`",
     ):
-        assert expected in blueprint
+        assert expected in runbook
 
-    assert "OPENAI_API_KEY" not in blueprint
-    assert "RETRIEVAL_STORAGE\n        value: pgvector" not in blueprint
+    assert "Render" not in runbook
+    assert not (REPOSITORY_ROOT / "render.yaml").exists()
 
 
 def test_restricted_demo_image_builds_web_and_runs_migrations() -> None:

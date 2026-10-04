@@ -1,6 +1,6 @@
 # ApplyLens AI portfolio handoff
 
-Last updated: 2026-09-28
+Last updated: 2026-10-04
 
 ## One-line project story
 
@@ -34,7 +34,7 @@ assistance, missing-information flags, and application tasks.
   tracking.
 - Hardened multi-tenant document processing with bounded PDF/TXT extraction,
   fail-closed persistence, account isolation tests, rate limits, quotas, and
-  privacy-safe observability; verified 224 backend and 18 frontend tests locally.
+  privacy-safe observability; verified 227 backend and 18 frontend tests locally.
 - Designed a checksum-verified PostgreSQL migration runner and pgvector CI job,
   plus a zero-paid-API deployment path that serves the React bundle and FastAPI
   API from one free-tier container.
