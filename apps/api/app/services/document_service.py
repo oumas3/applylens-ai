@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from io import BytesIO
 
+from pydantic import BaseModel
 from pypdf import PdfReader
 from pypdf.errors import FileNotDecryptedError, PdfReadError
 
@@ -10,15 +11,22 @@ class DocumentExtractionError(ValueError):
     """Raised when text cannot be extracted safely from a document."""
 
 
+class ExtractedPage(BaseModel):
+    """Extracted text with its original PDF page number when available."""
+
+    number: int | None = None
+    text: str
+
+
 class DocumentService:
     @staticmethod
-    def extract_text(
+    def extract_pages(
         content_type: str,
         file_bytes: bytes,
         *,
         max_pages: int = 100,
         max_chars: int = 500_000,
-    ) -> str:
+    ) -> list[ExtractedPage]:
         if max_pages < 1:
             raise ValueError("max_pages must be positive")
         if max_chars < 1:
@@ -40,7 +48,7 @@ class DocumentService:
                 raise DocumentExtractionError(
                     "No readable text was found in the document."
                 )
-            return text
+            return [ExtractedPage(text=text)]
 
         if content_type == "application/pdf":
             try:
@@ -55,14 +63,16 @@ class DocumentService:
                         f"PDFs must not exceed {max_pages} {page_label}."
                     )
 
-                pages_text: list[str] = []
+                pages: list[ExtractedPage] = []
                 extracted_chars = 0
 
-                for page in reader.pages:
+                for page_number, page in enumerate(reader.pages, start=1):
                     page_text = page.extract_text()
 
                     if page_text:
-                        pages_text.append(page_text)
+                        pages.append(
+                            ExtractedPage(number=page_number, text=page_text)
+                        )
                         extracted_chars += len(page_text)
                         if extracted_chars > max_chars:
                             raise DocumentExtractionError(
@@ -70,13 +80,12 @@ class DocumentService:
                                 f"{max_chars:,} characters."
                             )
 
-                text = "\n".join(pages_text)
-                if not text.strip():
+                if not any(page.text.strip() for page in pages):
                     raise DocumentExtractionError(
                         "No readable text was found in the PDF. "
                         "Scanned PDFs require OCR, which is not supported."
                     )
-                return text
+                return pages
 
             except (FileNotDecryptedError, PdfReadError) as error:
                 raise DocumentExtractionError(
@@ -84,3 +93,20 @@ class DocumentService:
                 ) from error
 
         raise DocumentExtractionError("Unsupported document type.")
+
+    @classmethod
+    def extract_text(
+        cls,
+        content_type: str,
+        file_bytes: bytes,
+        *,
+        max_pages: int = 100,
+        max_chars: int = 500_000,
+    ) -> str:
+        pages = cls.extract_pages(
+            content_type,
+            file_bytes,
+            max_pages=max_pages,
+            max_chars=max_chars,
+        )
+        return "\n".join(page.text for page in pages)

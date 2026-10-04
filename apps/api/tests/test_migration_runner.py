@@ -22,6 +22,7 @@ def test_discovers_repository_migrations_in_version_order() -> None:
         "007",
         "008",
         "009",
+        "010",
     ]
     assert all(len(migration.checksum) == 64 for migration in migrations)
 

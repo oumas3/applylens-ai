@@ -42,6 +42,12 @@ def test_retrieval_settings_have_stable_development_defaults() -> None:
     assert settings.support_email is None
 
 
+def test_empty_database_url_uses_local_fallback() -> None:
+    settings = Settings(_env_file=None, database_url="")
+
+    assert settings.database_url is None
+
+
 def test_retrieval_overlap_must_be_smaller_than_chunk_size() -> None:
     with pytest.raises(ValidationError, match="must be smaller"):
         Settings(

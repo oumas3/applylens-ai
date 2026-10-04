@@ -68,6 +68,13 @@ class Settings(BaseSettings):
             return None
         return value
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def empty_database_url_is_none(cls, value: object) -> object:
+        if isinstance(value, str) and not value.strip():
+            return None
+        return value
+
     @field_validator("web_origin")
     @classmethod
     def normalize_web_origin(cls, value: str) -> str:

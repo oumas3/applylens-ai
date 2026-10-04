@@ -27,6 +27,11 @@ DOCUMENT_TEXT_MIGRATION = (
     / "migrations"
     / "009_document_extracted_text.sql"
 )
+DOCUMENT_PAGES_MIGRATION = (
+    Path(__file__).resolve().parents[1]
+    / "migrations"
+    / "010_document_extracted_pages.sql"
+)
 REPOSITORY_ROOT = Path(__file__).resolve().parents[3]
 
 
@@ -116,6 +121,14 @@ def test_document_text_migration_is_idempotent() -> None:
     assert "add column if not exists extracted_text text" in sql
 
 
+def test_document_pages_migration_is_idempotent_and_structured() -> None:
+    sql = DOCUMENT_PAGES_MIGRATION.read_text(encoding="utf-8").lower()
+
+    assert "alter table documents" in sql
+    assert "add column if not exists extracted_pages jsonb" in sql
+    assert "not null default '[]'::jsonb" in sql
+
+
 def test_compose_mounts_all_incremental_migrations() -> None:
     for filename in ("docker-compose.yml", "docker-compose.production.yml"):
         compose = (REPOSITORY_ROOT / filename).read_text(encoding="utf-8")
@@ -124,3 +137,4 @@ def test_compose_mounts_all_incremental_migrations() -> None:
         assert "007_request_limits.sql:/docker-entrypoint-initdb.d/007_request_limits.sql:ro" in compose
         assert "008_security_cleanup_indexes.sql:/docker-entrypoint-initdb.d/008_security_cleanup_indexes.sql:ro" in compose
         assert "009_document_extracted_text.sql:/docker-entrypoint-initdb.d/009_document_extracted_text.sql:ro" in compose
+        assert "010_document_extracted_pages.sql:/docker-entrypoint-initdb.d/010_document_extracted_pages.sql:ro" in compose

@@ -243,9 +243,12 @@ def test_upload_document_rejects_corrupted_pdf() -> None:
 
     
 def make_test_pdf(text: str = "Hello from PDF") -> bytes:
+    return make_test_pdf_pages(text)
+
+
+def make_test_pdf_pages(*texts: str) -> bytes:
     output = BytesIO()
     writer = PdfWriter()
-    page = writer.add_blank_page(width=612, height=792)
 
     font = DictionaryObject(
         {
@@ -256,20 +259,22 @@ def make_test_pdf(text: str = "Hello from PDF") -> bytes:
     )
     font_reference = writer._add_object(font)
 
-    content = DecodedStreamObject()
-    content.set_data(
-        f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode("latin-1")
-    )
-    content_reference = writer._add_object(content)
+    for text in texts:
+        page = writer.add_blank_page(width=612, height=792)
+        content = DecodedStreamObject()
+        content.set_data(
+            f"BT /F1 12 Tf 72 720 Td ({text}) Tj ET".encode("latin-1")
+        )
+        content_reference = writer._add_object(content)
 
-    page[NameObject("/Resources")] = DictionaryObject(
-        {
-            NameObject("/Font"): DictionaryObject(
-                {NameObject("/F1"): font_reference}
-            )
-        }
-    )
-    page[NameObject("/Contents")] = content_reference
+        page[NameObject("/Resources")] = DictionaryObject(
+            {
+                NameObject("/Font"): DictionaryObject(
+                    {NameObject("/F1"): font_reference}
+                )
+            }
+        )
+        page[NameObject("/Contents")] = content_reference
 
     writer.write(output)
     return output.getvalue()
@@ -657,6 +662,9 @@ def test_database_document_storage_discards_source_bytes_and_retains_text(
     assert uploaded.status_code == 201
     assert "extracted_text" not in uploaded.json()
     assert persisted[0]["extracted_text"] == "bounded extracted evidence"
+    assert persisted[0]["extracted_pages"] == [
+        {"number": None, "text": "bounded extracted evidence"}
+    ]
     document_id = uploaded.json()["id"]
     assert client.get(f"/api/v1/documents/{document_id}/text").text == (
         "bounded extracted evidence"
@@ -1221,6 +1229,39 @@ def test_analyse_opportunity_uses_uploaded_document_evidence() -> None:
         "English proficiency",
     ]
     assert len(payload["evidence_summary"]) == 1
+
+
+def test_analyse_opportunity_cites_applicant_pdf_page() -> None:
+    upload_response = client.post(
+        "/api/v1/documents",
+        files={
+            "file": (
+                "candidate.pdf",
+                make_test_pdf_pages(
+                    "Bachelor degree completed",
+                    "IELTS English proficiency confirmed",
+                ),
+                "application/pdf",
+            )
+        },
+    )
+    document_id = upload_response.json()["id"]
+
+    response = client.post(
+        "/api/v1/opportunities/analyse",
+        json={
+            "title": "PhD in AI",
+            "requirements": ["English proficiency"],
+            "document_ids": [document_id],
+        },
+    )
+
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["eligibility"] == "Eligible"
+    assert payload["requirement_results"][0]["evidence"] == [
+        "IELTS English proficiency confirmed [source: candidate.pdf, page 2]"
+    ]
 
 
 def test_analyse_opportunity_marks_explicitly_failed_requirement_not_eligible() -> None:

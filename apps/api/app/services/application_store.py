@@ -89,17 +89,24 @@ class PostgresApplicationStore:
 
     def load_documents(self) -> list[dict[str, Any]]:
         with self._connect() as connection:
-            return list(
+            rows = list(
                 connection.execute(
                     """
                     SELECT id, user_id, original_filename, stored_filename, category,
                            content_type, size_bytes, status, extracted_text_length,
-                           extracted_text, uploaded_at
+                           extracted_text, extracted_pages, uploaded_at
                     FROM documents
                     ORDER BY uploaded_at, id
                     """
                 ).fetchall()
             )
+        return [
+            {
+                **row,
+                "extracted_pages": self._record_value(row["extracted_pages"]),
+            }
+            for row in rows
+        ]
 
     def replace_documents(
         self,
@@ -119,14 +126,15 @@ class PostgresApplicationStore:
                     INSERT INTO documents (
                         id, user_id, original_filename, stored_filename, category,
                         content_type, size_bytes, status, extracted_text_length,
-                        extracted_text, uploaded_at
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        extracted_text, extracted_pages, uploaded_at
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                     """,
                     (
                         record["id"], record["user_id"], record["original_filename"],
                         record["stored_filename"], record["category"], record["content_type"],
                         record["size_bytes"], record["status"], record["extracted_text_length"],
                         record.get("extracted_text"),
+                        self._json_param(record.get("extracted_pages", [])),
                         self._json_value(record["uploaded_at"]),
                     ),
                 )

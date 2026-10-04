@@ -18,7 +18,11 @@ from app.concurrency import guarded
 from app.rate_limiting import enforce_rate_limit
 from app.quotas import enforce_account_quota
 from app.routers.auth import get_current_user
-from app.routers.documents import documents, read_document_text, read_upload_bytes
+from app.routers.documents import (
+    documents,
+    read_document_pages,
+    read_upload_bytes,
+)
 from app.routers.profiles import profile_evidence, profiles, referenced_document_ids
 from app.services.document_service import DocumentExtractionError, DocumentService
 from app.services.application_store import PostgresApplicationStore
@@ -391,15 +395,21 @@ def _document_evidence(
             )
 
         try:
-            text = read_document_text(document)
+            pages = read_document_pages(document)
         except (OSError, DocumentExtractionError) as error:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail=f"Unable to read document: {document.original_filename}",
             ) from error
 
-        if text.strip():
-            extracted_text.append(text.strip())
+        for page in pages:
+            if not page.text.strip():
+                continue
+            page_label = f", page {page.number}" if page.number is not None else ""
+            extracted_text.append(
+                f"{page.text.strip()} "
+                f"[source: {document.original_filename}{page_label}]"
+            )
 
     return extracted_text
 
@@ -723,17 +733,17 @@ def analyse_opportunity(
     normalized_evidence.extend(_document_evidence(request.document_ids, str(user["id"])))
     user_id = str(user["id"])
     profile = profiles.get(user_id)
-    profile_documents: dict[str, tuple[str, str]] = {}
+    profile_documents = {}
     if profile is not None:
         for document_id in referenced_document_ids(profile):
             document = documents.get(document_id)
             if document is None or document.user_id != user_id:
                 continue
             try:
-                text = read_document_text(document)
+                pages = read_document_pages(document)
             except (OSError, DocumentExtractionError):
                 continue
-            profile_documents[document_id] = (document.original_filename, text)
+            profile_documents[document_id] = (document.original_filename, pages)
     normalized_evidence.extend(profile_evidence(profile, profile_documents))
 
     matched_requirements = []

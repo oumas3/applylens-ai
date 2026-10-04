@@ -16,6 +16,7 @@ from app.quotas import enforce_account_quota
 from app.services.document_service import (
     DocumentExtractionError,
     DocumentService,
+    ExtractedPage,
 )
 from app.services.application_store import PostgresApplicationStore
 from app.services.file_storage import LocalFileStorage
@@ -70,6 +71,11 @@ class DocumentMetadata(BaseModel):
     status: Literal["uploaded"]
     extracted_text_length: int = 0
     extracted_text: str | None = Field(default=None, exclude=True, repr=False)
+    extracted_pages: list[ExtractedPage] = Field(
+        default_factory=list,
+        exclude=True,
+        repr=False,
+    )
     uploaded_at: datetime
 
 
@@ -110,6 +116,10 @@ def _persist_documents(user_id: str | None = None) -> None:
         {
             **document.model_dump(mode="python"),
             "extracted_text": document.extracted_text,
+            "extracted_pages": [
+                page.model_dump(mode="python")
+                for page in document.extracted_pages
+            ],
         }
         for document in documents.values()
         if user_id is None or document.user_id == user_id
@@ -141,7 +151,16 @@ def read_document_text(document: DocumentMetadata) -> str:
     """Return stored extracted text without exposing its persistence mode."""
     if document.extracted_text is not None:
         return document.extracted_text
-    return DocumentService.extract_text(
+    return "\n".join(page.text for page in read_document_pages(document))
+
+
+def read_document_pages(document: DocumentMetadata) -> list[ExtractedPage]:
+    """Return page-aware text, including a legacy fallback without page data."""
+    if document.extracted_pages:
+        return document.extracted_pages
+    if document.extracted_text is not None:
+        return [ExtractedPage(text=document.extracted_text)]
+    return DocumentService.extract_pages(
         document.content_type,
         file_storage.read(document.stored_filename),
         max_pages=settings.document_max_pages,
@@ -249,12 +268,13 @@ async def upload_document(
             )
 
     try:
-        extracted_text = DocumentService.extract_text(
+        extracted_pages = DocumentService.extract_pages(
             normalized_content_type,
             file_bytes,
             max_pages=settings.document_max_pages,
             max_chars=settings.document_max_extracted_chars,
         )
+        extracted_text = "\n".join(page.text for page in extracted_pages)
     except DocumentExtractionError as error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
@@ -268,11 +288,13 @@ async def upload_document(
     stored_filename = f"{document_id}{file_extension}"
     size_bytes = len(file_bytes)
     extracted_text_record: str | None = extracted_text
+    extracted_pages_record = extracted_pages
 
     if settings.document_storage == "local":
         stored_file = file_storage.save(stored_filename, file_bytes)
         size_bytes = stored_file.size_bytes
         extracted_text_record = None
+        extracted_pages_record = []
 
     metadata = DocumentMetadata(
         id=document_id,
@@ -285,6 +307,7 @@ async def upload_document(
         status="uploaded",
         extracted_text_length=len(extracted_text),
         extracted_text=extracted_text_record,
+        extracted_pages=extracted_pages_record,
         uploaded_at=datetime.now(timezone.utc),
     )
 

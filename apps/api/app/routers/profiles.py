@@ -15,6 +15,7 @@ from app.config import get_settings
 from app.routers.auth import get_current_user
 from app.routers.documents import documents
 from app.services.application_store import PostgresApplicationStore
+from app.services.document_service import ExtractedPage
 
 
 router = APIRouter(
@@ -188,7 +189,7 @@ def empty_profile(user_id: str) -> CandidateProfile:
 
 def profile_evidence(
     profile: CandidateProfile | None,
-    document_evidence: dict[str, tuple[str, str]],
+    document_evidence: dict[str, tuple[str, list[ExtractedPage]]],
 ) -> list[str]:
     """Return structured claims whose linked document text supports the claim."""
     if profile is None:
@@ -205,11 +206,16 @@ def profile_evidence(
         claim_tokens = tokens(claim_terms)
         return list(
             dict.fromkeys(
-                filename
+                (
+                    f"{filename}, page {page.number}"
+                    if page.number is not None
+                    else filename
+                )
                 for document_id in item.document_ids
                 if document_id in document_evidence
-                for filename, text in [document_evidence[document_id]]
-                if claim_tokens & tokens(text)
+                for filename, pages in [document_evidence[document_id]]
+                for page in pages
+                if claim_tokens & tokens(page.text)
             )
         )
 
