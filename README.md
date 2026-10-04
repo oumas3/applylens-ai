@@ -141,7 +141,8 @@ bullets, see [`docs/portfolio-handoff.md`](docs/portfolio-handoff.md).
 
 ### Sprint 13 — Privacy and account lifecycle
 
-- Export every account-owned record and exact uploaded file content as private JSON.
+- Export every account-owned record as private JSON, including exact uploaded
+  bytes when retained or extracted text/page evidence in the restricted demo.
 - Permanently delete accounts, sessions, reset tokens, files, vectors, reviews, and tasks.
 - Require explicit per-account consent before external AI evidence processing.
 - Explain privacy boundaries, AI limitations, and candidate responsibility in the UI.

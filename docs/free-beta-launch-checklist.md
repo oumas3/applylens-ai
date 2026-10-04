@@ -23,7 +23,7 @@ guarantor of admission or funding.
 | Tenant isolation | Cross-user document, opportunity, profile, review, task, export, and deletion tests pass | Implemented with explicit two-user CRUD matrix |
 | Evidence workflow | Upload, extraction, citations, retrieval, eligibility, profile evidence, reviews, and task tests pass | Implemented |
 | Durable production data | PostgreSQL schema readiness, file storage, migration, backup, and restore procedures are verified | Implemented; final restore drill required |
-| Privacy lifecycle | Explicit external-AI consent, data export, account deletion, and user-facing limitations are verified | Implemented |
+| Privacy lifecycle | Explicit external-AI consent, storage-aware data export, account deletion, and user-facing limitations are verified | Implemented |
 | First-use experience | Real onboarding progress, accessible navigation, responsive UI, empty states, and account-switch isolation pass | Implemented |
 | Public-beta abuse safety | Same-origin write protection, bounded free-use limits, sensitive-route throttling, and consistent password policy pass | Implemented |
 | Launch information | Privacy notice, terms, acceptable-use rules, support route, release metadata, and operator contacts are present | Implemented; deployment values required |

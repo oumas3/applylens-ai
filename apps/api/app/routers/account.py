@@ -46,7 +46,7 @@ class AccountDeletionRequest(BaseModel):
 
 
 class AccountExportResponse(BaseModel):
-    schema_version: Literal["1.1"] = "1.1"
+    schema_version: Literal["1.2"] = "1.2"
     exported_at: datetime
     account: dict[str, Any]
     documents: list[dict[str, Any]]
@@ -106,20 +106,38 @@ def export_account_data(
     for document in documents_router.documents.values():
         if document.user_id != user_id:
             continue
-        try:
-            content = documents_router.file_storage.read(document.stored_filename)
-        except OSError as error:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="A stored document could not be included in the export.",
-            ) from error
-        exported_documents.append(
-            {
-                **document.model_dump(mode="json"),
-                "sha256": hashlib.sha256(content).hexdigest(),
-                "content_base64": base64.b64encode(content).decode("ascii"),
-            }
-        )
+        exported_document = document.model_dump(mode="json")
+        if document.extracted_text is not None:
+            exported_document.update(
+                {
+                    "source_bytes_retained": False,
+                    "sha256": None,
+                    "content_base64": None,
+                    "extracted_text": document.extracted_text,
+                    "extracted_pages": [
+                        page.model_dump(mode="json")
+                        for page in document.extracted_pages
+                    ],
+                }
+            )
+        else:
+            try:
+                content = documents_router.file_storage.read(document.stored_filename)
+            except OSError as error:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="A stored document could not be included in the export.",
+                ) from error
+            exported_document.update(
+                {
+                    "source_bytes_retained": True,
+                    "sha256": hashlib.sha256(content).hexdigest(),
+                    "content_base64": base64.b64encode(content).decode("ascii"),
+                    "extracted_text": None,
+                    "extracted_pages": [],
+                }
+            )
+        exported_documents.append(exported_document)
 
     response.headers["Content-Disposition"] = (
         'attachment; filename="applylens-account-export.json"'

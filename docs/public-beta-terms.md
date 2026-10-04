@@ -20,16 +20,21 @@ submission.
 
 ## Account data and retention
 
-ApplyLens stores account details, a structured candidate profile, uploaded PDF
-and TXT files and their extracted text, opportunity text, evidence chunks,
-reviews, tasks, sessions, security records, and the account's external-AI
-consent choice. Account-owned application data is isolated from other users.
+ApplyLens stores account details, a structured candidate profile, document
+metadata and extracted text, opportunity text, evidence chunks, reviews, tasks,
+sessions, security records, and the account's external-AI consent choice.
+Self-hosted deployments may retain uploaded PDF and TXT source files. The
+restricted public demo discards source-file bytes after extraction and retains
+only bounded extracted text and page evidence. Account-owned application data
+is isolated from other users.
 
 A signed-in user can export their account data, delete individual supported
-records, or permanently delete the account. Account deletion removes active
-application data and uploaded files. Deleted data may remain in access-restricted
-operational backups until those backups reach their scheduled rotation; backups
-are used only for disaster recovery.
+records, or permanently delete the account. Exports include exact source bytes
+when the deployment retained them; otherwise they include the extracted text
+and page evidence used by ApplyLens. Account deletion removes active application
+data and any retained uploaded files. Deleted data may remain in
+access-restricted operational backups until those backups reach their scheduled
+rotation; backups are used only for disaster recovery.
 
 ## External AI and automated analysis
 

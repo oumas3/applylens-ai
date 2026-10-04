@@ -132,18 +132,44 @@ def test_account_export_contains_exact_owned_data_only(account_client) -> None:
     )
     assert response.headers["cache-control"] == "no-store"
     payload = response.json()
-    assert payload["schema_version"] == "1.1"
+    assert payload["schema_version"] == "1.2"
     assert payload["account"]["id"] == first_id
     assert payload["account"]["email"] == "first@example.com"
     assert "password_hash" not in payload["account"]
     assert [item["stored_filename"] for item in payload["documents"]] == [first_filename]
     assert base64.b64decode(payload["documents"][0]["content_base64"]) == first_content
     assert payload["documents"][0]["sha256"] == hashlib.sha256(first_content).hexdigest()
+    assert payload["documents"][0]["source_bytes_retained"] is True
+    assert payload["documents"][0]["extracted_text"] is None
     assert [item["title"] for item in payload["opportunities"]] == ["first PhD"]
     assert [item["title"] for item in payload["reviews"]] == ["first review"]
     assert payload["tasks"]
     assert all(item["user_id"] == first_id for item in payload["tasks"])
     assert payload["profile"]["skills"][0]["name"] == "Python"
+
+
+def test_account_export_includes_extracted_evidence_when_source_bytes_are_discarded(
+    account_client,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    client, _ = account_client
+    _register_and_login(client, "candidate@example.com", "correct horse battery")
+    monkeypatch.setattr(documents_router.settings, "document_storage", "database")
+
+    uploaded = client.post(
+        "/api/v1/documents?category=CV",
+        files={"file": ("candidate.txt", b"bounded evidence", "text/plain")},
+    )
+    response = client.get("/api/v1/account/export")
+
+    assert uploaded.status_code == 201
+    assert response.status_code == 200
+    exported = response.json()["documents"][0]
+    assert exported["source_bytes_retained"] is False
+    assert exported["content_base64"] is None
+    assert exported["sha256"] is None
+    assert exported["extracted_text"] == "bounded evidence"
+    assert exported["extracted_pages"] == [{"number": None, "text": "bounded evidence"}]
 
 
 def test_external_ai_consent_defaults_off_and_persists(account_client) -> None:
