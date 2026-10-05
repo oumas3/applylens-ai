@@ -102,3 +102,27 @@ def test_restricted_demo_build_context_excludes_local_secrets_and_artifacts() ->
         "apps/api/storage",
     ):
         assert excluded in dockerignore.splitlines()
+
+
+def test_vercel_entrypoint_builds_frontend_and_loads_fastapi() -> None:
+    pyproject = (REPOSITORY_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    entrypoint = (REPOSITORY_ROOT / "vercel_app.py").read_text(encoding="utf-8")
+    requirements = (REPOSITORY_ROOT / "requirements.txt").read_text(
+        encoding="utf-8"
+    )
+
+    assert 'entrypoint = "vercel_app:app"' in pyproject
+    assert "npm --prefix apps/web ci" in pyproject
+    assert "npm --prefix apps/web run build" in pyproject
+    assert 'os.environ.setdefault("WEB_STATIC_DIR", str(WEB_BUILD))' in entrypoint
+    assert "from app.main import app" in entrypoint
+    assert requirements.splitlines() == [
+        "fastapi==0.116.1",
+        "-r apps/api/requirements.txt",
+    ]
+
+    vercelignore = (REPOSITORY_ROOT / ".vercelignore").read_text(
+        encoding="utf-8"
+    )
+    for excluded in (".env", ".env.*", ".neon", "**/node_modules", "apps/api/storage"):
+        assert excluded in vercelignore.splitlines()

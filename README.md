@@ -288,6 +288,8 @@ For production deployment and recovery procedures, see
 `deploy/production.env.example`; never commit the populated production environment file.
 For the strict-zero-cost restricted demo, use the dated provider analysis and
 checklist in [`docs/deployment.md`](docs/deployment.md).
+The selected Vercel Hobby path and its serverless limits are documented in
+[`docs/vercel-deployment.md`](docs/vercel-deployment.md).
 For the first HTTPS staging environment, follow
 [`docs/staging-deployment.md`](docs/staging-deployment.md) and start from
 `deploy/staging.env.example`.

@@ -168,6 +168,24 @@ def test_production_accepts_persistent_https_configuration() -> None:
     assert settings.log_level == "WARNING"
 
 
+def test_vercel_production_domain_supplies_default_web_origin(monkeypatch) -> None:
+    monkeypatch.setenv(
+        "VERCEL_PROJECT_PRODUCTION_URL",
+        "applylens-ai.vercel.app",
+    )
+
+    settings = Settings(
+        _env_file=None,
+        app_env="production",
+        database_url="postgresql://postgres/applylens",
+        email_delivery="disabled",
+        support_email="support@example.com",
+        incident_contact_email="incident@example.com",
+    )
+
+    assert settings.web_origin == "https://applylens-ai.vercel.app"
+
+
 def test_web_origin_is_normalized_for_exact_cors_matching() -> None:
     settings = Settings(
         _env_file=None,

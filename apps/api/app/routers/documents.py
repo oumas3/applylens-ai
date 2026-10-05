@@ -38,10 +38,13 @@ UPLOAD_DIRECTORY = (
     / "uploads"
 )
 
-UPLOAD_DIRECTORY.mkdir(parents=True, exist_ok=True)
-file_storage = LocalFileStorage(UPLOAD_DIRECTORY)
 DOCUMENTS_FILE = Path(__file__).resolve().parents[2] / "storage" / "documents.json"
 settings = get_settings()
+file_storage = (
+    LocalFileStorage(UPLOAD_DIRECTORY)
+    if settings.document_storage == "local"
+    else None
+)
 application_store = (
     PostgresApplicationStore(settings.database_url)
     if settings.database_url
@@ -191,6 +194,8 @@ def read_document_pages(document: DocumentMetadata) -> list[ExtractedPage]:
         return document.extracted_pages
     if document.extracted_text is not None:
         return [ExtractedPage(text=document.extracted_text)]
+    if file_storage is None:
+        raise RuntimeError("Local document storage is disabled.")
     return DocumentService.extract_pages(
         document.content_type,
         file_storage.read(document.stored_filename),
@@ -320,6 +325,7 @@ async def upload_document(
     extracted_pages_record = extracted_pages
 
     if settings.document_storage == "local":
+        assert file_storage is not None
         stored_file = file_storage.save(stored_filename, file_bytes)
         size_bytes = stored_file.size_bytes
         extracted_text_record = None
@@ -347,6 +353,7 @@ async def upload_document(
         )
         if not created:
             if settings.document_storage == "local":
+                assert file_storage is not None
                 file_storage.delete(stored_filename)
             enforce_account_quota(
                 "document",
@@ -362,6 +369,7 @@ async def upload_document(
             enforce_account_quota("document", owned_document_count + 1)
         except HTTPException:
             if settings.document_storage == "local":
+                assert file_storage is not None
                 file_storage.delete(stored_filename)
             raise
         documents[document_id] = metadata
@@ -370,6 +378,7 @@ async def upload_document(
         except Exception:
             documents.pop(document_id, None)
             if settings.document_storage == "local":
+                assert file_storage is not None
                 file_storage.delete(stored_filename)
             raise
 
@@ -439,6 +448,7 @@ def delete_document(document_id: str, user: dict[str, str | bool] = Depends(get_
     else:
         documents.pop(document_id)
     if document.extracted_text is None:
+        assert file_storage is not None
         file_storage.delete(document.stored_filename)
     if application_store is None:
         _persist_documents(user_id)

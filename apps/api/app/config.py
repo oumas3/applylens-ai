@@ -1,4 +1,5 @@
 from functools import lru_cache
+import os
 from pathlib import Path
 from typing import Literal
 from urllib.parse import urlparse
@@ -10,11 +11,19 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 ROOT_DIR = Path(__file__).resolve().parents[3]
 
 
+def default_web_origin() -> str:
+    """Use Vercel's stable production domain when it is available."""
+    vercel_domain = os.getenv("VERCEL_PROJECT_PRODUCTION_URL", "").strip()
+    if vercel_domain:
+        return f"https://{vercel_domain}"
+    return "http://localhost:5173"
+
+
 class Settings(BaseSettings):
     app_env: Literal["development", "test", "production"] = "development"
     api_host: str = "0.0.0.0"
     api_port: int = 8000
-    web_origin: str = "http://localhost:5173"
+    web_origin: str = Field(default_factory=default_web_origin)
     database_url: str | None = None
     log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
     auth_database_path: Path = ROOT_DIR / "apps" / "api" / "storage" / "auth.db"
