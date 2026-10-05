@@ -634,8 +634,32 @@ def test_database_document_storage_discards_source_bytes_and_retains_text(
 
     class RecordingStore:
         @staticmethod
-        def replace_documents(records, *, user_id=None) -> None:
-            persisted[:] = list(records)
+        def load_documents(user_id=None) -> list[dict]:
+            return [
+                record
+                for record in persisted
+                if user_id is None or record["user_id"] == user_id
+            ]
+
+        @staticmethod
+        def create_document(record, *, limit: int) -> bool:
+            assert limit > 0
+            persisted.append(record)
+            return True
+
+        @staticmethod
+        def delete_document(user_id: str, document_id: str) -> bool:
+            retained = [
+                record
+                for record in persisted
+                if not (
+                    record["user_id"] == user_id
+                    and record["id"] == document_id
+                )
+            ]
+            deleted = len(retained) != len(persisted)
+            persisted[:] = retained
+            return deleted
 
     class NoFileStorage:
         @staticmethod
