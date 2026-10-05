@@ -1,6 +1,6 @@
 # ApplyLens AI implementation status
 
-Last updated: 2026-10-04
+Last updated: 2026-10-05
 
 This is the resumable engineering checklist for the ApplyLens AI personal
 project. A checked item means the behavior was verified in the current
@@ -9,7 +9,7 @@ deployment or production-scale validation.
 
 ## Current baseline
 
-- Branch: `codex/portfolio-reliability` (created from `main` at `fd69e9c`).
+- Branch: `main`.
 - Working tree was clean before this effort began.
 - Main journey: authenticate, upload applicant evidence, ingest an academic
   opportunity, inspect evidence-linked eligibility assistance, create tasks,
@@ -36,11 +36,12 @@ deployment or production-scale validation.
 Pytest emitted one environmental warning because Windows denied writes to the
 existing `.pytest_cache` directory. Test execution itself succeeded.
 
-### Latest verification on 2026-10-04
+### Latest verification on 2026-10-05
 
-- [x] Backend suite: 227 passed, with 2 database integration tests skipped
+- [x] Backend suite: 233 passed, with 3 database integration tests skipped
   because no local PostgreSQL URL was configured.
 - [x] Frontend suite: 18 passed across 2 test files.
+- [x] Chromium smoke suite: 1 browser test passed.
 - [x] Frontend TypeScript and production build passed.
 - [x] Deployment smoke-test suite: 7 passed.
 - [x] Project virtual-environment `pip check` reported no broken requirements.
@@ -65,7 +66,7 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
   `Insufficient information`, and returns requirement-level evidence.
 - [x] Local JSON/SQLite development persistence and PostgreSQL application
   persistence are implemented as explicit modes.
-- [x] Nine ordered, idempotent SQL migration files are present.
+- [x] Ten ordered, idempotent SQL migration files are present.
 - [x] Structured request logs, request IDs, liveness, readiness, and
   privacy-safe security headers are implemented.
 - [x] GitHub Actions runs Python tests, frontend tests/build, deployment smoke
@@ -77,16 +78,14 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
 
 - [x] Configured PostgreSQL load failures now fail closed during application
   startup instead of initializing empty application collections.
-- [ ] PostgreSQL routers still load records into module-level collections.
-  Multi-process freshness needs correction or an explicit single-process
-  deployment constraint.
+- [x] PostgreSQL routes use request-time, tenant-scoped CRUD instead of
+  module-level application collections; transactional writes enforce quotas.
 - [x] A checksum-verified migration runner records applied versions and fails
   on edited migration history.
 - [x] CI is configured to execute migrations and pgvector isolation tests
   against PostgreSQL 16 with pgvector.
-- [ ] pgvector retrieval filters by opportunity ID after the route checks
-  opportunity ownership. Add database-backed isolation tests so this boundary
-  is verified rather than inferred from unit tests.
+- [x] Database-backed integration tests cover pgvector opportunity isolation
+  and request-fresh tenant-scoped application CRUD.
 - [x] The restricted demo extracts bounded text into PostgreSQL and discards
   source bytes, avoiding reliance on the free host's ephemeral filesystem.
   Self-hosted/local mode can still retain bytes on its configured volume.
@@ -117,8 +116,8 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
 - [x] Repeatable deterministic evaluation CLI with saved baseline/comparison
   results for Recall@k, evidence-presence proxy, insufficient-information
   accuracy, structured validity, and local-process latency.
-- [x] Real PostgreSQL/pgvector CI job is configured and pushed; its remote
-  result still needs to be observed before merge.
+- [x] Real PostgreSQL/pgvector CI is configured; the expanded tenant CRUD test
+  must pass on the exact release commit before deployment.
 - [x] The deployment architecture is provider-neutral and keeps strict
   zero-cost safeguards; provider terms must be verified before provisioning.
 - [ ] Verified public demo URL and restart/persistence acceptance evidence.
@@ -126,8 +125,9 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
 ### Not verified because access or dependencies are missing
 
 - [ ] Container images and Compose services running locally (Docker missing).
-- [ ] PostgreSQL transaction, migration, and pgvector behavior against a real
-  server (database unavailable locally and absent from CI).
+- [ ] The expanded PostgreSQL transaction, migration, CRUD, and pgvector suite
+  is not runnable locally because Docker/PostgreSQL is unavailable; CI provides
+  the real server and must be green on the release commit.
 - [ ] SMTP delivery with a real provider (credentials intentionally absent).
 - [ ] OpenAI embeddings with a live API (no paid call was authorized).
 - [ ] Deployed behavior (provider access was not supplied). Hosting constraints
@@ -135,14 +135,13 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
 
 ## Highest-risk failure points
 
-1. Process-local collections and locks do not guarantee cross-process freshness
-   or quota correctness for a multi-worker deployment.
-2. The new PostgreSQL/pgvector CI job has not yet been observed on GitHub.
-3. The restricted demo stores extracted text rather than source bytes; users
+1. The restricted demo stores extracted text rather than source bytes; users
    must understand that downloads and OCR are intentionally unavailable.
-4. Rule matching still lacks reliable numeric and synonym handling for GPA,
+2. Rule matching still lacks reliable numeric and synonym handling for GPA,
    work-duration, programming-skill, undergraduate-qualification, and CEFR
    evidence cases recorded in the evaluation report.
+3. A public host, restart persistence, backup restoration, SMTP, and public
+   two-user isolation still require deployed acceptance evidence.
 
 ## Implementation queue
 
@@ -157,11 +156,10 @@ existing `.pytest_cache` directory. Test execution itself succeeded.
 - [x] Full backend suite: 201 tests passed after ingestion hardening.
 - [x] Diff hygiene passed after ingestion hardening.
 
-### Next — persistence correctness
+### Complete — persistence correctness
 
 - [x] Stop swallowing configured PostgreSQL load failures.
-- [ ] Define request-time database freshness or constrain deployment to one
-  process with the limitation explicit; prefer direct scoped queries.
+- [x] Use request-time tenant-scoped queries and transactional quota writes.
 - [x] Add a small idempotent migration runner with an applied-version ledger.
 - [x] Add PostgreSQL/pgvector integration tests and a CI database service.
 - [x] PostgreSQL/pgvector integration passed on GitHub Actions for `4f70904`.

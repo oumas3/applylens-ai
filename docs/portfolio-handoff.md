@@ -1,6 +1,6 @@
 # ApplyLens AI portfolio handoff
 
-Last updated: 2026-10-04
+Last updated: 2026-10-05
 
 ## One-line project story
 
@@ -34,7 +34,8 @@ assistance, missing-information flags, and application tasks.
   tracking.
 - Hardened multi-tenant document processing with bounded PDF/TXT extraction,
   fail-closed persistence, account isolation tests, rate limits, quotas, and
-  privacy-safe observability; verified 227 backend and 18 frontend tests locally.
+  privacy-safe observability; verified 233 backend, 18 frontend, and one real-
+  browser smoke test locally.
 - Designed a checksum-verified PostgreSQL migration runner and pgvector CI job,
   plus a zero-paid-API deployment path that serves the React bundle and FastAPI
   API from one free-tier container.
@@ -53,9 +54,9 @@ assistance, missing-information flags, and application tasks.
 - Why source bytes are discarded in the restricted demo: the application host
   does not need persistent storage because bounded extracted text is stored in
   PostgreSQL, while downloads and OCR are explicitly out of scope.
-- Why the app is not called production-ready: remote CI, provider deployment,
-  cold-start behavior, restart persistence, backup restoration, and public
-  tenant-isolation acceptance still require external verification.
+- Why the app is not called production-ready: exact-commit CI, provider
+  deployment, cold-start behavior, restart persistence, backup restoration,
+  and public tenant-isolation acceptance still require external verification.
 
 ## Claims to avoid until deployment verification
 
@@ -63,6 +64,6 @@ assistance, missing-information flags, and application tasks.
   passes against that exact revision.
 - Do not call the synthetic metrics admissions accuracy or general model quality.
 - Do not claim local Docker or real PostgreSQL execution was verified on this
-  workstation; Docker was unavailable and the two integration tests skipped.
+  workstation; Docker was unavailable and the three integration tests skipped.
 - Do not claim password recovery works in the restricted demo; outbound SMTP is
   intentionally disabled there.

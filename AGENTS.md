@@ -14,15 +14,15 @@ ApplyLens AI is an evidence-based application intelligence platform for Master's
 - Version control: Git and GitHub
 
 ## Current status
-- Sprint 0 is complete.
+- Sprints 0 through 17 are complete; release hardening is in progress.
 - The React interface works and looks professional.
 - The frontend connects successfully to the FastAPI health endpoint.
 - npm dependencies are installed. 
-- The current Git branch is sprint-2-opportunity-analysis.
+- The current Git branch is `main`.
 - Sprint 1 document ingestion is complete.
-- Sprint 2 will focus on opportunity analysis, eligibility reasoning, and application task tracking.
-- The backend has 15 passing tests.
-- The frontend production build passes.
+- Opportunity analysis, eligibility reasoning, application task tracking, account privacy, and launch packaging are implemented.
+- The backend has 233 passing local tests plus 3 PostgreSQL integration tests configured for CI.
+- The frontend has 18 passing unit tests, a passing Chromium smoke test, and a passing production build.
 
 ## Working rules
 - Guide the work carefully, one step at a time.

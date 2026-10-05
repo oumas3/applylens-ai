@@ -71,6 +71,12 @@ jobs:
       - name: Run frontend tests
         run: npm test
 
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      - name: Run real-browser smoke test
+        run: npm run test:e2e
+
   postgres-integration:
     name: PostgreSQL and pgvector integration
     runs-on: ubuntu-latest

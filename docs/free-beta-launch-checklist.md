@@ -82,6 +82,7 @@ Run these checks from a clean release commit:
 ```powershell
 .\.venv\Scripts\python.exe -m pytest apps/api/tests -q
 npm --prefix apps/web test -- --run
+npm --prefix apps/web run test:e2e
 npm --prefix apps/web run build
 .\.venv\Scripts\python.exe -m pytest deploy/test_smoke_test.py -q
 git diff --check HEAD^ HEAD

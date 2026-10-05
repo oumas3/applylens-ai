@@ -8,6 +8,8 @@ __pycache__/
 node_modules/
 dist/
 coverage/
+apps/web/playwright-report/
+apps/web/test-results/
 *.tsbuildinfo
 apps/web/vite.config.js
 apps/web/vite.config.d.ts
