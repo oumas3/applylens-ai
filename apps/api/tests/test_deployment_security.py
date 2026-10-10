@@ -111,6 +111,9 @@ def test_vercel_entrypoint_builds_frontend_and_loads_fastapi() -> None:
         encoding="utf-8"
     )
 
+    assert '[project]' in pyproject
+    assert 'requires-python = ">=3.12,<3.13"' in pyproject
+    assert '"fastapi==0.116.1"' in pyproject
     assert 'entrypoint = "vercel_app:app"' in pyproject
     assert "npm --prefix apps/web ci" in pyproject
     assert "npm --prefix apps/web run build" in pyproject
